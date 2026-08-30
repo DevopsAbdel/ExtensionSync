@@ -132,12 +132,12 @@ async function detectProfileLabel() {
     const email = (info && info.email) || '';
     if (/^[^@\s]+@[^@\s]+$/.test(email)) {
       // Use the local part, e.g. "john.doe" — safe for filenames.
-      return email.split('@')[0].replace(/[^\w.-]+/g, '_') || 'default';
+      return email.split('@')[0].replace(/[^\w.-]+/g, '_') || 'No_Profil';
     }
   } catch {
     /* identity unavailable — fall through */
   }
-  return 'default';
+  return 'No_Profil';
 }
 
 /** YYYY-MM-DD (UTC, local date is fine for backups) */
@@ -401,10 +401,10 @@ function toBackupRecord(ext) {
  * fully machine-parseable. A rich metadata header describes the source browser,
  * profile, and export time.
  *
- * Note: chrome.downloads.download can write a Blob object URL directly from
- * the popup context without needing any file-system permission. We pass a Blob
- * object URL (not a data: URL) because Chrome ignores the `filename` option for
- * data: URLs and falls back to a default/random name.
+ * Note: we use a base64 data: URL with the application/octet-stream MIME type.
+ * Chromium ignores the `filename` option for "known" MIME types (e.g.
+ * application/json) and for blob: URLs, which would make downloads land with
+ * random names; octet-stream reliably honors the requested filename.
  */
 async function exportAll() {
   dom.exportAllBtn.disabled = true;
@@ -450,20 +450,24 @@ async function exportAll() {
     // yyyy-mm-dd_Extensions_{browser}_{profile}.json — all path-safe.
     const filename = `${dateStamp(now)}_Extensions_${browser}_${profile}.json`;
 
-    // Use a Blob object URL, not a data: URL. Chrome ignores the `filename`
-    // option for data: URLs (falling back to the default, e.g. "téléchargement.json")
-    // but honors it for blob: URLs.
-    const blob = new Blob([json], { type: 'application/json' });
-    const objectUrl = URL.createObjectURL(blob);
-    try {
-      await chrome.downloads.download({
-        url: objectUrl,
-        filename,
-        saveAs: true
-      });
-    } finally {
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+    // Build a UTF-8 base64 data: URL. We use the application/octet-stream MIME
+    // type on purpose: Chromium browsers ignore the `filename` option for
+    // "known" MIME types (application/json) and for blob: URLs — both caused
+    // downloads to land with random names like "téléchargement.json" or a
+    // UUID. With octet-stream the requested filename is honored.
+    const bytes = new TextEncoder().encode(json);
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
     }
+    const dataUrl = `data:application/octet-stream;base64,${btoa(binary)}`;
+
+    await chrome.downloads.download({
+      url: dataUrl,
+      filename,
+      saveAs: true
+    });
 
     showCallout(`Exported ${records.length} extension${records.length === 1 ? '' : 's'}`);
   } catch (error) {
