@@ -444,16 +444,24 @@ async function exportAll() {
 
     // Pretty-print with 2-space indentation for readability.
     const json = JSON.stringify(document_, null, 2);
-    const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
 
     // yyyy-mm-dd_Extensions_{browser}_{profile}.json — all path-safe.
     const filename = `${dateStamp(now)}_Extensions_${browser}_${profile}.json`;
 
-    await chrome.downloads.download({
-      url: dataUrl,
-      filename,
-      saveAs: true
-    });
+    // Use a Blob object URL, not a data: URL. Chrome ignores the `filename`
+    // option for data: URLs (falling back to the default, e.g. "téléchargement.json")
+    // but honors it for blob: URLs.
+    const blob = new Blob([json], { type: 'application/json' });
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      await chrome.downloads.download({
+        url: objectUrl,
+        filename,
+        saveAs: true
+      });
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+    }
 
     showCallout(`Exported ${records.length} extension${records.length === 1 ? '' : 's'}`);
   } catch (error) {
