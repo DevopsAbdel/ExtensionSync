@@ -220,10 +220,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'GET_PAYLOAD': {
       // Popup asks for the current serialized snapshot.
       void (async () => {
-        const { [STORAGE_KEYS.SYNC_PAYLOAD]: payload = [] } =
+        let { [STORAGE_KEYS.SYNC_PAYLOAD]: payload = [] } =
           await chrome.storage.sync.get(STORAGE_KEYS.SYNC_PAYLOAD);
         const { [STORAGE_KEYS.LAST_SYNC_AT]: lastSyncAt = null } =
           await chrome.storage.local.get(STORAGE_KEYS.LAST_SYNC_AT);
+
+        // If the persisted payload is empty (e.g. the worker was terminated
+        // before the initial scan, or storage was cleared), recompute it live
+        // so the popup always sees real data.
+        if (!Array.isArray(payload) || payload.length === 0) {
+          payload = await refreshSyncPayload();
+        }
+
         sendResponse({ ok: true, payload, lastSyncAt });
       })();
       return true; // async response

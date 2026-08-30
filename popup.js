@@ -150,23 +150,46 @@ dom.tabBar.addEventListener('click', (e) => {
 async function loadExtensions() {
   setSyncStatus('pending');
   try {
-    const res = await Promise.race([
-      sendToBackground({ type: 'GET_PAYLOAD' }),
-      new Promise((resolve) => setTimeout(() => resolve(null), 2500))
-    ]);
+    // The popup has the management permission, so enumerate live extensions
+    // DIRECTLY. Never trust a possibly-empty persisted payload — the payload
+    // is only a cache for cross-device sync, not the source of truth.
+    const all = await chrome.management.getAll();
+    const selfId = chrome.runtime.id;
 
-    if (res && res.ok && Array.isArray(res.payload)) {
-      state.extensions = res.payload;
-    } else {
-      // Worker asleep/unreachable — read directly from sync storage.
-      const { extensionsync_payload: cached = [] } =
-        await chrome.storage.sync.get('extensionsync_payload');
-      state.extensions = cached;
-    }
+    state.extensions = all
+      .filter((ext) => ext.id !== selfId && ext.type === 'extension')
+      .map((ext) => ({
+        name: ext.name,
+        id: ext.id,
+        version: ext.version,
+        enabled: ext.enabled,
+        mayDisable: ext.mayDisable,
+        installType: ext.installType || 'unknown',
+        webStoreUrl: `https://chromewebstore.google.com/detail/-/${ext.id}`
+      }));
+
     setSyncStatus('synced');
     renderExportGrid();
+
+    // Opportunistically refresh the background payload so cloud sync is up
+    // to date; failures here must not break the grid we already rendered.
+    try {
+      sendToBackground({ type: 'REFRESH_PAYLOAD' });
+    } catch {
+      /* background refresh is best-effort */
+    }
   } catch (error) {
     setSyncStatus('error');
+    // Fall back to the synced payload if management enumeration fails.
+    try {
+      const { extensionsync_payload: cached = [] } =
+        await chrome.storage.sync.get('extensionsync_payload');
+      if (Array.isArray(cached) && cached.length > 0) {
+        state.extensions = cached;
+      }
+    } catch {
+      /* storage also unavailable */
+    }
     renderExportGrid();
   }
 }
