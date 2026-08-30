@@ -599,6 +599,29 @@ code {
   flex-shrink: 0;
 }
 
+.store-verified .store-check-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.store-verified .store-check-toggle input:checked + .toggle-track {
+  background: var(--neon-cyan-dim);
+  border-color: var(--border-cyan);
+  box-shadow: 0 0 10px -2px var(--neon-cyan);
+}
+
+.store-verified .store-check-toggle input:checked + .toggle-track .toggle-thumb {
+  transform: translateX(13px);
+  background: var(--neon-cyan);
+}
+
+.store-verified .store-check-toggle input:focus-visible + .toggle-track {
+  outline: 1px solid var(--neon-cyan);
+  outline-offset: 1px;
+}
+
 .store-card-verified {
   display: inline-flex;
   align-items: center;
@@ -742,6 +765,22 @@ code {
 .ext-store .rating {
   color: var(--neon-violet);
   font-weight: 600;
+}
+
+/* Store card publisher + user count: bold, accented */
+.store-card .ext-store .meta-pub {
+  color: var(--neon-cyan);
+  font-weight: 700;
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.store-card .ext-store .meta-users {
+  color: var(--neon-violet);
+  font-weight: 700;
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
 }
 
 /* --- Sticky selection action bar --- */

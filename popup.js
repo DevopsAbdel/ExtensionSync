@@ -463,11 +463,12 @@ function formatUsers(n) {
 /** Renders the Web Store meta line (publisher · rating · users), if any. */
 function renderStoreMetaLine(ext) {
   const parts = [];
-  if (ext.author) parts.push(escapeHtml(ext.author));
+  if (ext.author) parts.push(`<span class="meta-pub">${escapeHtml(ext.author)}</span>`);
   if (typeof ext.rating === 'number') {
     parts.push(`<span class="rating">★ ${ext.rating.toFixed(1)}${ext.numRatings ? ` (${formatUsers(ext.numRatings)})` : ''}</span>`);
-  } else if (ext.users) {
-    parts.push(`<span>${escapeHtml(formatUsers(ext.users))} users</span>`);
+  }
+  if (typeof ext.users === 'number' && Number.isFinite(ext.users)) {
+    parts.push(`<span class="meta-users">${escapeHtml(formatUsers(ext.users))} users</span>`);
   }
   if (parts.length === 0) return '';
   return `<div class="ext-store" title="${escapeHtml(ext.author || 'Web Store data')}">${parts.join(' · ')}</div>`;
@@ -1124,7 +1125,7 @@ async function runStoreSearch(query) {
 
     if (res.configured === false) {
       dom.storeSearchStatus.textContent =
-        'Store search is disabled. Set a Web Store proxy in Configuration → Web Store Proxy.';
+        'Store search is disabled. Set a Web Store proxy in Settings → Web Store Proxy.';
       dom.storeSearchStatus.classList.add('is-error');
       return;
     }
@@ -1138,7 +1139,7 @@ async function runStoreSearch(query) {
   } catch {
     dom.storeSearchLoading.classList.add('is-hidden');
     dom.storeSearchStatus.textContent =
-      'Search failed. Check the Web Store proxy in Configuration.';
+      'Search failed. Check the Web Store proxy in Settings.';
     dom.storeSearchStatus.classList.add('is-error');
   }
 }
@@ -1182,7 +1183,7 @@ function rebuildStoreCategoryOptions() {
     if (r.category) opts.add(r.category);
   }
   const current = dom.storeFilterCategory.value;
-  dom.storeFilterCategory.innerHTML = '<option value="">Toutes</option>' +
+  dom.storeFilterCategory.innerHTML = '<option value="">All</option>' +
     [...opts].sort((a, b) => a.localeCompare(b)).map((c) =>
       `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
   dom.storeFilterCategory.value = opts.has(current) ? current : '';
