@@ -109,6 +109,45 @@ async function sendToBackground(message) {
   return chrome.runtime.sendMessage(message);
 }
 
+/** Detects the Chromium browser from the User-Agent string. */
+function detectBrowser() {
+  const ua = navigator.userAgent;
+  if (/Edg\/\d/.test(ua)) return 'Edge';
+  if (/Brave/.test(ua)) return 'Brave';
+  if (/Vivaldi/.test(ua)) return 'Vivaldi';
+  if (/OPR\/|Opera/.test(ua)) return 'Opera';
+  if (/Chrome\/\d/.test(ua)) return 'Chrome';
+  if (/Chromium\/\d/.test(ua)) return 'Chromium';
+  return 'Browser';
+}
+
+/**
+ * Derives a compact, filesystem-safe profile label. Returns the signed-in
+ * account email (if the browser exposes it via identity.getProfileUserInfo,
+ * no token/OAuth popup required) — otherwise a sanitized hostname.
+ */
+async function detectProfileLabel() {
+  try {
+    const info = await chrome.identity.getProfileUserInfo();
+    const email = (info && info.email) || '';
+    if (/^[^@\s]+@[^@\s]+$/.test(email)) {
+      // Use the local part, e.g. "john.doe" — safe for filenames.
+      return email.split('@')[0].replace(/[^\w.-]+/g, '_') || 'default';
+    }
+  } catch {
+    /* identity unavailable — fall through */
+  }
+  return 'default';
+}
+
+/** YYYY-MM-DD (UTC, local date is fine for backups) */
+function dateStamp(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 /* --------------------------------------------------------------------------
  * TAB NAVIGATION
  * ------------------------------------------------------------------------ */
@@ -312,8 +351,55 @@ dom.selectAllBtn.addEventListener('click', () => {
  * ------------------------------------------------------------------------ */
 
 /**
- * Builds the backup JSON blob and saves it via the downloads API as
- * extensionsync-backup.json.
+ * Enriches a native ExtensionInfo object into a clean, human-readable backup
+ * record. Sorted and structured so the resulting JSON file is both easy to
+ * read and machine-parsable.
+ */
+function toBackupRecord(ext) {
+  // Pick the largest icon for a nicer document.
+  const bestIcon = (ext.icons || []).reduce((acc, icon) =>
+    !acc || icon.size > acc.size ? icon : acc, null);
+
+  return {
+    // --- identification ---
+    name: ext.name || 'Untitled',
+    id: ext.id,
+    version: ext.version,
+    versionName: ext.versionName || null,
+    description: ext.description || '',
+    shortName: ext.shortName || null,
+
+    // --- state ---
+    enabled: ext.enabled,
+    disabledReason: ext.disabledReason || null,
+    mayDisable: ext.mayDisable,
+    mayEnable: ext.mayEnable,
+    installType: ext.installType || 'unknown',
+    type: ext.type || 'extension',
+
+    // --- where it lives / links ---
+    webStoreUrl: `https://chromewebstore.google.com/detail/-/${ext.id}`,
+    optionsUrl: ext.optionsUrl || null,
+    homepageUrl: ext.homepageUrl || null,
+    updateUrl: ext.updateUrl || null,
+
+    // --- capabilities ---
+    permissions: (ext.permissions || []).sort(),
+    hostPermissions: (ext.hostPermissions || []).sort(),
+
+    // --- presentation ---
+    iconUrl: (bestIcon && bestIcon.url) || null,
+    iconSize: (bestIcon && bestIcon.size) || null
+  };
+}
+
+/**
+ * Builds the backup JSON blob and saves it via the downloads API.
+ *
+ * The file is named `yyyy-mm-dd_Extensions_{browser}_{profile}.json` and is
+ * pretty-printed (2-space indent) so it reads cleanly by hand while remaining
+ * fully machine-parseable. A rich metadata header describes the source browser,
+ * profile, and export time.
  *
  * Note: chrome.downloads.download can write a data: URL blob directly from
  * the popup context without needing any file-system permission.
@@ -322,30 +408,50 @@ async function exportAll() {
   dom.exportAllBtn.disabled = true;
   setSyncStatus('pending');
   try {
-    // Enumerate ALL extensions, not just those in the synced payload, so the
-    // export is authoritative. We fuse with any cached records to preserve
-    // the Web Store URL derivation.
+    // Enumerate ALL extensions for an authoritative export.
     const all = await chrome.management.getAll();
     const selfId = chrome.runtime.id;
 
     const records = all
       .filter((ext) => ext.id !== selfId && ext.type === 'extension')
-      .map((ext) => ({
-        name: ext.name,
-        id: ext.id,
-        version: ext.version,
-        enabled: ext.enabled,
-        installType: ext.installType || 'unknown',
-        webStoreUrl: `https://chromewebstore.google.com/detail/-/${ext.id}`
-      }));
+      .map(toBackupRecord)
+      .sort((a, b) => a.name.localeCompare(b.name));
 
-    // Serialize to a minified JSON blob (no pretty-print → compact payload).
-    const json = JSON.stringify({ schemaVersion: 1, exportedAt: new Date().toISOString(), extensions: records });
+    const enabledCount = records.filter((r) => r.enabled).length;
+
+    const browser = detectBrowser();
+    const profile = await detectProfileLabel();
+    const now = new Date();
+
+    // Comprehensive, self-describing document.
+    const document_ = {
+      schema: {
+        name: 'ExtensionSync Backup',
+        version: 1,
+        description: 'A portable snapshot of installed browser extensions.'
+      },
+      metadata: {
+        exportedAt: now.toISOString(),
+        exportedAtLocal: now.toString(),
+        browser,
+        profile,
+        extensionCount: records.length,
+        enabledCount,
+        disabledCount: records.length - enabledCount
+      },
+      extensions: records
+    };
+
+    // Pretty-print with 2-space indentation for readability.
+    const json = JSON.stringify(document_, null, 2);
     const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
+
+    // yyyy-mm-dd_Extensions_{browser}_{profile}.json — all path-safe.
+    const filename = `${dateStamp(now)}_Extensions_${browser}_${profile}.json`;
 
     await chrome.downloads.download({
       url: dataUrl,
-      filename: 'extensionsync-backup.json',
+      filename,
       saveAs: true
     });
 
