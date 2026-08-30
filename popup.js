@@ -27,12 +27,19 @@ const dom = {
 
   // Export
   searchInput: document.getElementById('search-input'),
+  searchClearBtn: document.getElementById('search-clear-btn'),
   exportAllBtn: document.getElementById('export-all-btn'),
+  exportSelectedBtn: document.getElementById('export-selected-btn'),
+  clearSelectionBtn: document.getElementById('clear-selection-btn'),
   extensionGrid: document.getElementById('extension-grid'),
+  gridLoading: document.getElementById('grid-loading'),
   listMeta: document.getElementById('list-meta'),
   extensionCount: document.getElementById('extension-count'),
+  stateSummary: document.getElementById('state-summary'),
   selectAllBtn: document.getElementById('select-all-btn'),
-  exportCallout: document.getElementById('export-callout'),
+  selectionBar: document.getElementById('selection-bar'),
+  selectionCount: document.getElementById('selection-count'),
+  toast: document.getElementById('toast'),
 
   // Import
   dropzone: document.getElementById('dropzone'),
@@ -92,16 +99,19 @@ function setSyncStatus(mode) {
   dom.syncStatus.dataset.state = mode; // 'synced' | 'pending' | 'error' | 'idle'
 }
 
-/** Shows a transient toast-style callout. */
+/** Shows a transient global toast notification from any panel. */
+function showToast(message, type = 'success') {
+  clearTimeout(showToast._t);
+  dom.toast.textContent = message;
+  dom.toast.className = `toast is-${type}`;
+  // Force reflow so the entrance transition restarts on repeated toasts.
+  void dom.toast.offsetWidth;
+  showToast._t = setTimeout(() => dom.toast.classList.add('is-hidden'), 3000);
+}
+
+/** Legacy alias so existing callers keep working. */
 function showCallout(message, type = 'success', autoHide = true) {
-  dom.exportCallout.textContent = message;
-  dom.exportCallout.className = `callout is-${type}`;
-  if (autoHide) {
-    clearTimeout(showCallout._t);
-    showCallout._t = setTimeout(() => {
-      dom.exportCallout.classList.add('is-hidden');
-    }, 2600);
-  }
+  showToast(message, type);
 }
 
 /** Sends a message to the background service worker and returns its response. */
@@ -197,6 +207,8 @@ dom.tabBar.addEventListener('click', (e) => {
  */
 async function loadExtensions() {
   setSyncStatus('pending');
+  dom.gridLoading.classList.remove('is-hidden');
+  dom.extensionGrid.innerHTML = '';
   try {
     // The popup has the management permission, so enumerate live extensions
     // DIRECTLY. Never trust a possibly-empty persisted payload — the payload
@@ -244,6 +256,7 @@ async function loadExtensions() {
 
 /** Re-renders the export grid honoring the current search filter. */
 function renderExportGrid() {
+  dom.gridLoading.classList.add('is-hidden');
   const filter = state.filter.trim().toLowerCase();
 
   const visible = state.extensions.filter((ext) =>
@@ -252,13 +265,32 @@ function renderExportGrid() {
 
   dom.extensionCount.textContent = `${state.extensions.length} extension${state.extensions.length === 1 ? '' : 's'}`;
 
+  // Enabled / disabled summary.
+  const enabledCount = state.extensions.filter((e) => e.enabled).length;
+  dom.stateSummary.textContent =
+    `${enabledCount} active · ${state.extensions.length - enabledCount} off`;
+
   if (state.extensions.length === 0) {
     dom.extensionGrid.innerHTML = renderEmptyState(
       'No extensions found',
-      'ExtensionSync could not enumerate your installed extensions.'
+      'ExtensionSync could not enumerate your installed extensions.',
+      'refresh'
     );
     dom.selectAllBtn.textContent = 'Select all';
     dom.selectAllBtn.dataset.state = 'none';
+    updateSelectionBar();
+    return;
+  }
+
+  if (visible.length === 0) {
+    dom.extensionGrid.innerHTML = renderEmptyState(
+      `No matches for “${escapeHtml(state.filter.trim())}”`,
+      'Try a different name or extension ID.',
+      'clear'
+    );
+    dom.selectAllBtn.textContent = 'Select all';
+    dom.selectAllBtn.dataset.state = 'none';
+    updateSelectionBar();
     return;
   }
 
@@ -270,9 +302,24 @@ function renderExportGrid() {
   const allVisibleSelected = visible.length > 0 && visible.every((ext) => state.selected.has(ext.id));
   dom.selectAllBtn.textContent = allVisibleSelected ? 'Deselect all' : 'Select all';
   dom.selectAllBtn.dataset.state = allVisibleSelected ? 'all' : (state.selected.size > 0 ? 'some' : 'none');
+  updateSelectionBar();
 }
 
-function renderEmptyState(title, hint) {
+/** Toggles the sticky selection action bar based on the current selection. */
+function updateSelectionBar() {
+  const count = state.selected.size;
+  const anySelected = count > 0;
+  dom.selectionBar.classList.toggle('is-hidden', !anySelected);
+  dom.selectionBar.classList.toggle('has-selection', anySelected);
+  dom.selectionCount.textContent = `${count} selected`;
+}
+
+function renderEmptyState(title, hint, action) {
+  const actionHtml = action === 'clear'
+    ? '<button id="empty-clear-btn" class="btn-outline btn-sm" type="button">Clear search</button>'
+    : action === 'refresh'
+      ? '<button id="empty-refresh-btn" class="btn-outline btn-sm" type="button">Try again</button>'
+      : '';
   return `
     <div class="empty-state">
       <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -282,19 +329,30 @@ function renderEmptyState(title, hint) {
       </svg>
       <p>${escapeHtml(title)}</p>
       <p class="empty-hint">${escapeHtml(hint)}</p>
+      ${actionHtml}
     </div>`;
 }
 
 /**
- * Renders a single extension card. Selection is used by the export flow
- * (toggle enable/disable per selected item on the Web Store launch).
+ * Renders a single extension card with a selection checkbox. Selection drives
+ * the bulk "Export Selected" action as well as the individual enable/disable
+ * toggle.
  */
 function renderExtensionCard(ext) {
   const isSelected = state.selected.has(ext.id);
   const initials = (ext.name || '?').slice(0, 2).toUpperCase();
 
   return `
-    <article class="ext-card" data-id="${escapeHtml(ext.id)}">
+    <article class="ext-card ${isSelected ? 'is-selected' : ''}" data-id="${escapeHtml(ext.id)}">
+      <label class="sel-check" title="Select ${escapeHtml(ext.name)}">
+        <input
+          type="checkbox"
+          data-action="select-exp"
+          data-id="${escapeHtml(ext.id)}"
+          ${isSelected ? 'checked' : ''}
+        >
+        <span class="sel-check-box"></span>
+      </label>
       <div class="ext-icon">${escapeHtml(initials)}</div>
       <div class="ext-info">
         <div class="ext-name" title="${escapeHtml(ext.name)}">${escapeHtml(ext.name)}</div>
@@ -319,23 +377,50 @@ function renderExtensionCard(ext) {
 /** Search filter input. */
 dom.searchInput.addEventListener('input', (e) => {
   state.filter = e.target.value;
+  dom.searchClearBtn.classList.toggle('is-hidden', !state.filter);
   renderExportGrid();
 });
 
-/** Selection toggle from the grid (re-render to sync toggle states). */
-dom.extensionGrid.addEventListener('change', (e) => {
-  const input = e.target.closest('input[data-action="toggle-exp"]');
-  if (!input) return;
+/** Clear the search filter. */
+function clearSearch() {
+  state.filter = '';
+  dom.searchInput.value = '';
+  dom.searchClearBtn.classList.add('is-hidden');
+  renderExportGrid();
+}
+dom.searchClearBtn.addEventListener('click', clearSearch);
 
-  const ext = state.extensions.find((x) => x.id === input.dataset.id);
+/** Per-card selection from the grid. */
+dom.extensionGrid.addEventListener('change', (e) => {
+  const selectInput = e.target.closest('input[data-action="select-exp"]');
+  if (selectInput) {
+    if (selectInput.checked) {
+      state.selected.add(selectInput.dataset.id);
+    } else {
+      state.selected.delete(selectInput.dataset.id);
+    }
+    renderExportGrid();
+    return;
+  }
+
+  const toggleInput = e.target.closest('input[data-action="toggle-exp"]');
+  if (!toggleInput) return;
+
+  const ext = state.extensions.find((x) => x.id === toggleInput.dataset.id);
   if (!ext) return;
 
   // chrome.management.setEnabled requires a user gesture; the change event
   // qualifies. May show a native confirmation dialog for disabledExtension.
-  chrome.management.setEnabled(ext.id, input.checked).catch((err) => {
-    input.checked = !input.checked; // rollback toggle on failure
-    showCallout(`Could not ${input.checked ? 'enable' : 'disable'} ${ext.name}`, 'error');
+  chrome.management.setEnabled(ext.id, toggleInput.checked).catch((err) => {
+    toggleInput.checked = !toggleInput.checked; // rollback toggle on failure
+    showCallout(`Could not ${toggleInput.checked ? 'enable' : 'disable'} ${ext.name}`, 'error');
   });
+});
+
+/** Actions rendered inside the empty-state (clear search / try again). */
+dom.extensionGrid.addEventListener('click', (e) => {
+  if (e.target.closest('#empty-clear-btn')) clearSearch();
+  if (e.target.closest('#empty-refresh-btn')) loadExtensions();
 });
 
 /** "Select all / Deselect" for bulk export. */
@@ -352,6 +437,12 @@ dom.selectAllBtn.addEventListener('click', () => {
   } else {
     visible.forEach((ext) => state.selected.add(ext.id));
   }
+  renderExportGrid();
+});
+
+/** Clear the current selection. */
+dom.clearSelectionBtn.addEventListener('click', () => {
+  state.selected.clear();
   renderExportGrid();
 });
 
@@ -416,16 +507,23 @@ function toBackupRecord(ext) {
  * URLs, which would save the file under the browser default (e.g.
  * "téléchargement"); the anchor download attribute reliably names the file.
  */
-async function exportAll() {
-  dom.exportAllBtn.disabled = true;
+async function exportAll(appliedIds) {
+  const isSubset = Array.isArray(appliedIds) && appliedIds.length > 0;
+  const ids = isSubset ? new Set(appliedIds) : null;
+  const btn = isSubset ? dom.exportSelectedBtn : dom.exportAllBtn;
+  btn.disabled = true;
   setSyncStatus('pending');
   try {
-    // Enumerate ALL extensions for an authoritative export.
+    // Enumerate ALL extensions for an authoritative export (or filter to the
+    // user's selection below).
     const all = await chrome.management.getAll();
     const selfId = chrome.runtime.id;
 
     const records = all
-      .filter((ext) => ext.id !== selfId && ext.type === 'extension')
+      .filter((ext) =>
+        ext.id !== selfId &&
+        ext.type === 'extension' &&
+        (!ids || ids.has(ext.id)))
       .map(toBackupRecord)
       .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -482,12 +580,17 @@ async function exportAll() {
     showCallout('Export failed. See console for details.', 'error');
     console.error('[ExtensionSync] export failed:', error);
   } finally {
-    dom.exportAllBtn.disabled = false;
+    btn.disabled = false;
     setSyncStatus('synced');
   }
 }
 
-dom.exportAllBtn.addEventListener('click', exportAll);
+dom.exportAllBtn.addEventListener('click', () => exportAll());
+
+/** Export only the currently selected extensions. */
+dom.exportSelectedBtn.addEventListener('click', () => {
+  exportAll([...state.selected]);
+});
 
 /* --------------------------------------------------------------------------
  * IMPORT — backup file upload & interactive wizard
@@ -528,6 +631,14 @@ function handleImportFile(file) {
 
 /* Dropzone click → open file picker. */
 dom.dropzone.addEventListener('click', () => dom.importFile.click());
+
+/* Keyboard accessibility: Enter or Space opens the picker. */
+dom.dropzone.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    dom.importFile.click();
+  }
+});
 
 /* Drag & drop support. */
 ['dragenter', 'dragover'].forEach((evt) => {

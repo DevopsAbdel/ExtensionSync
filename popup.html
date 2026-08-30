@@ -40,25 +40,38 @@
     <!-- ======= EXPORT PANEL ======= -->
     <section id="panel-export" class="panel is-active" role="tabpanel" aria-label="Export extensions">
       <div class="panel-toolbar">
-        <input
-          type="search"
-          id="search-input"
-          class="neon-input"
-          placeholder="Filter extensions…"
-          autocomplete="off"
-          aria-label="Filter extensions"
-        >
+        <div class="search-wrap">
+          <input
+            type="search"
+            id="search-input"
+            class="neon-input"
+            placeholder="Filter extensions…"
+            autocomplete="off"
+            aria-label="Filter extensions"
+          >
+          <button id="search-clear-btn" class="search-clear is-hidden" type="button" aria-label="Clear search">×</button>
+        </div>
         <button id="export-all-btn" class="btn-neon" type="button">Export All</button>
       </div>
 
       <div class="list-meta" id="list-meta" aria-live="polite">
         <span id="extension-count" class="count-badge">0 extensions</span>
+        <span id="state-summary" class="state-summary" aria-hidden="true"></span>
         <button id="select-all-btn" class="link-btn" type="button">Select all</button>
       </div>
 
-      <div id="extension-grid" class="extension-grid" aria-live="polite"></div>
+      <div id="selection-bar" class="selection-bar is-hidden" aria-live="polite">
+        <span id="selection-count" class="selection-count">0 selected</span>
+        <button id="export-selected-btn" class="btn-neon btn-sm" type="button">Export Selected</button>
+        <button id="clear-selection-btn" class="link-btn" type="button">Clear</button>
+      </div>
 
-      <div id="export-callout" class="callout is-hidden" role="status" aria-live="polite"></div>
+      <div id="grid-loading" class="grid-loading is-hidden" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Loading extensions…</span>
+      </div>
+
+      <div id="extension-grid" class="extension-grid" aria-live="polite"></div>
     </section>
 
     <!-- ======= IMPORT PANEL ======= -->
@@ -136,6 +149,9 @@
     </section>
 
   </main>
+
+  <!-- ============ GLOBAL TOAST ============ -->
+  <div id="toast" class="toast is-hidden" role="status" aria-live="polite"></div>
 
   <script src="popup.js"></script>
 </body>
