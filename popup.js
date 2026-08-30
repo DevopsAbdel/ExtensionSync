@@ -1227,7 +1227,7 @@ function renderStoreResults() {
           <span class="sel-check-box"></span>
         </label>
         <a class="store-card-link" href="${escapeHtml(`https://chromewebstore.google.com/detail/${r.id}`)}"
-           target="_blank" rel="noopener noreferrer">
+           data-open-store="${escapeHtml(`https://chromewebstore.google.com/detail/${r.id}`)}">
           ${icon}
           <div class="store-card-body">
             <div class="store-card-title">
@@ -1276,6 +1276,20 @@ function updateStoreSelectionUI() {
     card.classList.toggle('is-selected', state.storeSelection.has(id));
   });
 }
+
+dom.storeResults.addEventListener('click', (e) => {
+  // Left-click on a card opens the store page silently in a background tab,
+  // keeping the popup on the search page. Modified/middle clicks keep the
+  // browser's default open-in-new-tab behavior.
+  if (e.button !== 0 || e.ctrlKey || e.shiftKey || e.metaKey || e.altKey) return;
+  const link = e.target.closest('a.store-card-link');
+  if (!link) return;
+  e.preventDefault();
+  const url = link.dataset.openStore || link.href;
+  chrome.tabs.create({ url, active: false }).catch((err) => {
+    console.error('[ExtensionSync] failed to open store page:', err);
+  });
+});
 
 dom.storeResults.addEventListener('change', (e) => {
   const cb = e.target.closest('input[data-action="store-select"]');
