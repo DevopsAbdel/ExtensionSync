@@ -107,10 +107,18 @@
 
         <div id="store-results" class="store-results" aria-live="polite"></div>
       </div>
+    </section>
+
+    <!-- ======= EXPORT PANEL ======= -->
+    <section id="panel-export" class="panel" role="tabpanel" aria-label="Export extensions" hidden>
+      <div class="panel-toolbar">
+        <p class="panel-subtitle">All installed extensions — Export All saves a full backup.</p>
+        <button id="export-all-btn" class="btn-neon" type="button">Export All</button>
+      </div>
 
       <hr class="section-divider">
 
-      <!-- Installed extensions filter -->
+      <!-- Filter installed extensions -->
       <div class="panel-toolbar">
         <div class="search-wrap">
           <input
@@ -152,21 +160,6 @@
         <span id="selection-count" class="selection-count">0 selected</span>
         <button id="export-selected-btn" class="btn-neon btn-sm" type="button">Export Selected</button>
         <button id="clear-selection-btn" class="link-btn" type="button">Clear</button>
-      </div>
-
-      <div id="grid-loading" class="grid-loading is-hidden" role="status" aria-live="polite">
-        <span class="spinner" aria-hidden="true"></span>
-        <span>Loading extensions…</span>
-      </div>
-
-      <div id="extension-grid" class="extension-grid" aria-live="polite"></div>
-    </section>
-
-    <!-- ======= EXPORT PANEL ======= -->
-    <section id="panel-export" class="panel" role="tabpanel" aria-label="Export extensions" hidden>
-      <div class="panel-toolbar">
-        <p class="panel-subtitle">All installed extensions — Export All saves a full backup.</p>
-        <button id="export-all-btn" class="btn-neon" type="button">Export All</button>
       </div>
 
       <div id="export-grid-loading" class="grid-loading is-hidden" role="status" aria-live="polite">

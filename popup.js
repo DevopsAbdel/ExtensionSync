@@ -33,9 +33,7 @@ const dom = {
   exportAllBtn: document.getElementById('export-all-btn'),
   exportSelectedBtn: document.getElementById('export-selected-btn'),
   clearSelectionBtn: document.getElementById('clear-selection-btn'),
-  extensionGrid: document.getElementById('extension-grid'),
   exportGrid: document.getElementById('export-grid'),
-  gridLoading: document.getElementById('grid-loading'),
   exportGridLoading: document.getElementById('export-grid-loading'),
   listMeta: document.getElementById('list-meta'),
   extensionCount: document.getElementById('extension-count'),
@@ -244,9 +242,7 @@ dom.tabBar.addEventListener('click', (e) => {
  */
 async function loadExtensions() {
   setSyncStatus('pending');
-  dom.gridLoading.classList.remove('is-hidden');
   dom.exportGridLoading.classList.remove('is-hidden');
-  dom.extensionGrid.innerHTML = '';
   dom.exportGrid.innerHTML = '';
   try {
     // The popup has the management permission, so enumerate live extensions
@@ -275,8 +271,7 @@ async function loadExtensions() {
     await enrichWithStoreMeta();
 
     setSyncStatus('synced');
-    renderSearchGrid();
-    renderExportList();
+    renderExportGrid();
 
     // Opportunistically refresh the background payload so cloud sync is up
     // to date; failures here must not break the grid we already rendered.
@@ -297,8 +292,7 @@ async function loadExtensions() {
     } catch {
       /* background unreachable */
     }
-    renderSearchGrid();
-    renderExportList();
+    renderExportGrid();
   }
 }
 
@@ -341,9 +335,9 @@ function buildPublisherOptions() {
   if (dom.publisherFilter.value !== current) state.publisher = dom.publisherFilter.value;
 }
 
-/** Re-renders the Search grid honoring the current search + filters. */
-function renderSearchGrid() {
-  dom.gridLoading.classList.add('is-hidden');
+/** Re-renders the Export grid honoring the current search + filters. */
+function renderExportGrid() {
+  dom.exportGridLoading.classList.add('is-hidden');
   const filter = state.filter.trim().toLowerCase();
   const pub = state.publisher;
 
@@ -368,7 +362,7 @@ function renderSearchGrid() {
     `${enabledCount} active · ${state.extensions.length - enabledCount} off`;
 
   if (state.extensions.length === 0) {
-    dom.extensionGrid.innerHTML = renderEmptyState(
+    dom.exportGrid.innerHTML = renderEmptyState(
       'No extensions found',
       'ExtensionSync could not enumerate your installed extensions.',
       'refresh'
@@ -381,7 +375,7 @@ function renderSearchGrid() {
 
   if (visible.length === 0) {
     const filtered = Boolean(state.filter.trim()) || Boolean(state.publisher) || Boolean(state.sort);
-    dom.extensionGrid.innerHTML = renderEmptyState(
+    dom.exportGrid.innerHTML = renderEmptyState(
       filtered ? 'No matches for current filters' : 'No extensions to show',
       'Try a different name, extension ID, or clear the filters.',
       'clear'
@@ -392,7 +386,7 @@ function renderSearchGrid() {
     return;
   }
 
-  dom.extensionGrid.innerHTML = visible
+  dom.exportGrid.innerHTML = visible
     .map((ext) => renderExtensionCard(ext))
     .join('');
 
@@ -405,23 +399,6 @@ function renderSearchGrid() {
 
   // Determine select-all state.
   updateSelectAllState(visible);
-  updateSelectionBar();
-}
-
-/** Re-renders the Export list — always the full, unfiltered extension set. */
-function renderExportList() {
-  dom.exportGridLoading.classList.add('is-hidden');
-  if (state.extensions.length === 0) {
-    dom.exportGrid.innerHTML = renderEmptyState(
-      'No extensions found',
-      'ExtensionSync could not enumerate your installed extensions.',
-      'refresh'
-    );
-    return;
-  }
-  dom.exportGrid.innerHTML = state.extensions
-    .map((ext) => renderExtensionCard(ext))
-    .join('');
   updateSelectionBar();
 }
 
@@ -527,7 +504,7 @@ function renderExtensionCard(ext) {
 dom.searchInput.addEventListener('input', (e) => {
   state.filter = e.target.value;
   dom.searchClearBtn.classList.toggle('is-hidden', !state.filter);
-  renderSearchGrid();
+  renderExportGrid();
 });
 
 /** Clear the search filter. */
@@ -535,20 +512,20 @@ function clearSearch() {
   state.filter = '';
   dom.searchInput.value = '';
   dom.searchClearBtn.classList.add('is-hidden');
-  renderSearchGrid();
+  renderExportGrid();
 }
 dom.searchClearBtn.addEventListener('click', clearSearch);
 
 /** Publisher dropdown filter. */
 dom.publisherFilter.addEventListener('change', (e) => {
   state.publisher = e.target.value;
-  renderSearchGrid();
+  renderExportGrid();
 });
 
 /** Rating sort dropdown. */
 dom.ratingSort.addEventListener('change', (e) => {
   state.sort = e.target.value;
-  renderSearchGrid();
+  renderExportGrid();
 });
 
 /** Reset search + all filters to defaults. */
@@ -560,7 +537,7 @@ function resetFilters() {
   dom.searchClearBtn.classList.add('is-hidden');
   dom.publisherFilter.value = '';
   dom.ratingSort.value = '';
-  renderSearchGrid();
+  renderExportGrid();
 }
 dom.filterResetBtn.addEventListener('click', resetFilters);
 
@@ -573,8 +550,7 @@ function handleGridChange(e) {
     } else {
       state.selected.delete(selectInput.dataset.id);
     }
-    renderSearchGrid();
-    renderExportList();
+    renderExportGrid();
     return;
   }
 
@@ -592,7 +568,6 @@ function handleGridChange(e) {
   });
 }
 
-dom.extensionGrid.addEventListener('change', handleGridChange);
 dom.exportGrid.addEventListener('change', handleGridChange);
 
 /** Actions rendered inside the empty-state (clear search / try again). */
@@ -601,7 +576,6 @@ function handleGridClick(e) {
   if (e.target.closest('#empty-refresh-btn')) loadExtensions();
 }
 
-dom.extensionGrid.addEventListener('click', handleGridClick);
 dom.exportGrid.addEventListener('click', handleGridClick);
 
 /** "Select all / Deselect" for bulk export. */
@@ -618,15 +592,13 @@ dom.selectAllBtn.addEventListener('click', () => {
   } else {
     visible.forEach((ext) => state.selected.add(ext.id));
   }
-  renderSearchGrid();
-  renderExportList();
+  renderExportGrid();
 });
 
 /** Clear the current selection. */
 dom.clearSelectionBtn.addEventListener('click', () => {
   state.selected.clear();
-  renderSearchGrid();
-  renderExportList();
+  renderExportGrid();
 });
 
 /* --------------------------------------------------------------------------
