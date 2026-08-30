@@ -401,12 +401,11 @@ function toBackupRecord(ext) {
  * fully machine-parseable. A rich metadata header describes the source browser,
  * profile, and export time.
  *
- * Note: we use a base64 data: URL with the application/octet-stream MIME type
- * and `saveAs: false`. Chromium ignores the `filename` option for "known" MIME
- * types (e.g. application/json), for blob: URLs, and when `saveAs: true`
- * triggers a dialog — all of which download with random/default names.
- * octet-stream + saveAs:false reliably writes the requested filename directly
- * to the Downloads folder.
+ * Note: the download is triggered with a standard <a download> + blob URL
+ * click inside the button's user gesture. The chrome.downloads.download API
+ * has a long-standing Chromium bug that ignores `filename` for data:/blob:
+ * URLs, which would save the file under the browser default (e.g.
+ * "téléchargement"); the anchor download attribute reliably names the file.
  */
 async function exportAll() {
   dom.exportAllBtn.disabled = true;
@@ -452,24 +451,21 @@ async function exportAll() {
     // yyyy-mm-dd_Extensions_{browser}_{profile}.json — all path-safe.
     const filename = `${dateStamp(now)}_Extensions_${browser}_${profile}.json`;
 
-    // Build a UTF-8 base64 data: URL. We use the application/octet-stream MIME
-    // type on purpose: Chromium browsers ignore the `filename` option for
-    // "known" MIME types (application/json) and for blob: URLs, and it is also
-    // unreliable when `saveAs: true` shows a dialog. With octet-stream and
-    // `saveAs: false` the requested filename is written directly and reliably.
-    const bytes = new TextEncoder().encode(json);
-    let binary = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-    }
-    const dataUrl = `data:application/octet-stream;base64,${btoa(binary)}`;
-
-    await chrome.downloads.download({
-      url: dataUrl,
-      filename,
-      saveAs: false
-    });
+    // Trigger the download via a standard <a download> + blob URL click.
+    // The chrome.downloads.download API has a long-standing Chromium bug that
+    // ignores the `filename` option for data:/blob: URLs (saving as the browser
+    // default like "téléchargement"). An anchor download attribute, clicked
+    // within this button's user gesture, reliably names the file.
+    const blob = new Blob([json], { type: 'application/json' });
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
 
     showCallout(`Exported ${records.length} extension${records.length === 1 ? '' : 's'}`);
   } catch (error) {
