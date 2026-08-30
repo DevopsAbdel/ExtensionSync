@@ -66,6 +66,9 @@ const dom = {
   storeInstallProgress: document.getElementById('store-install-progress'),
   storeInstallProgressText: document.getElementById('store-install-progress-text'),
 
+  // Persistent view: open the full UI in its own tab
+  btnOpenTab: document.getElementById('btn-open-tab'),
+
   // Import
   dropzone: document.getElementById('dropzone'),
   importFile: document.getElementById('import-file'),
@@ -1376,6 +1379,26 @@ dom.installStoreBtn.addEventListener('click', installSelectedStoreResults);
  * ------------------------------------------------------------------------ */
 document.addEventListener('DOMContentLoaded', () => {
   activateTab('search');      // default tab
+
+  // When opened as a full tab (not a popup) there is no need for the
+  // "Open in tab" button — the view is already persistent.
+  const isPersistentTab = new URLSearchParams(location.search).get('tab') === '1';
+  if (isPersistentTab && dom.btnOpenTab) dom.btnOpenTab.classList.add('is-hidden');
+
+  // Wire the "Open in tab" action: open the full UI in its own tab (keeps
+  // search results open while the user browses other tabs), then close the popup.
+  if (dom.btnOpenTab) {
+    dom.btnOpenTab.addEventListener('click', async () => {
+      try {
+        await sendToBackground({ type: 'OPEN_IN_TAB' });
+      } catch (err) {
+        console.error('[ExtensionSync] failed to open tab:', err);
+        showCallout('Could not open the tab.', 'error');
+        return;
+      }
+      window.close();
+    });
+  }
 
   // Wire the online store search.
   dom.storeSearchBtn.addEventListener('click', () => runStoreSearch(dom.storeSearchInput.value));

@@ -7,8 +7,17 @@
     "management",
     "downloads",
     "storage",
-    "identity"
+    "identity",
+    "contextMenus"
   ],
+  "commands": {
+    "open-extension-sync": {
+      "suggested_key": {
+        "default": "Alt+Shift+E"
+      },
+      "description": "Open ExtensionSync in its own tab"
+    }
+  },
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*"

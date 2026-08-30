@@ -166,6 +166,34 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 /* --------------------------------------------------------------------------
+ * PERSISTENT VIEW — open the full UI in its own tab.
+ *
+ * A toolbar popup closes whenever it loses focus, which makes it unsuitable
+ * for browsing the browser's other tabs while keeping search results open.
+ * These entry points open popup.html as a regular tab that stays open:
+ *   - the "Open ExtensionSync" context-menu item on the toolbar icon
+ *   - the Alt+Shift+E keyboard shortcut (manifest "commands")
+ * ------------------------------------------------------------------------ */
+function openExtensionSync() {
+  chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?tab=1') });
+}
+
+chrome.contextMenus.removeAll(() => {
+  chrome.contextMenus.create(
+    { id: 'open-extension-sync', title: 'Open ExtensionSync', contexts: ['action'] },
+    () => void chrome.runtime.lastError
+  );
+});
+
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId === 'open-extension-sync') openExtensionSync();
+});
+
+chrome.runtime.onCommand.addListener((command) => {
+  if (command === 'open-extension-sync') openExtensionSync();
+});
+
+/* --------------------------------------------------------------------------
  * EXTENSION STATE MONITORING
  *
  * The management API fires these events whenever ANY extension (including
@@ -792,6 +820,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const { [STORAGE_KEYS.STORE_PROXY]: proxy = '' } =
           await chrome.storage.local.get(STORAGE_KEYS.STORE_PROXY);
         sendResponse({ ok: true, proxy });
+      })();
+      return true;
+    }
+
+    case 'OPEN_IN_TAB': {
+      // Open the full UI in its own tab so it stays open while the user
+      // browses other tabs (a popup closes when it loses focus).
+      void (async () => {
+        const url = chrome.runtime.getURL('popup.html?tab=1');
+        await chrome.tabs.create({ url });
+        sendResponse({ ok: true });
       })();
       return true;
     }
