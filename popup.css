@@ -15,14 +15,14 @@
   /* Neon accent palette */
   --neon-cyan:     #00E5FF;   /* active / success / primary */
   --neon-cyan-dim: rgba(0, 229, 255, 0.14);
-  --neon-violet:     #9D4EDD;   /* secondary accent */
-  --neon-violet-dim: rgba(157, 78, 221, 0.16);
+  --neon-violet:     #8B7DBE;   /* secondary accent (periwinkle) */
+  --neon-violet-dim: rgba(139, 125, 190, 0.16);
 
   /* Borders (razor-thin neon contours) */
   --border-default: #2A2A30;
   --border-elevated:#3A3A42;
   --border-cyan:    rgba(0, 229, 255, 0.55);
-  --border-violet:  rgba(157, 78, 221, 0.5);
+  --border-violet:  rgba(139, 125, 190, 0.5);
 
   /* Text */
   --text-primary:  #E8E9EE;

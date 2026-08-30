@@ -28,7 +28,7 @@ Premium **neon cyber-dark** theme:
 
 - Obsidian dark background (`#0A0A0C`)
 - Electric Cyan (`#00E5FF`) for active/success states
-- Amethyst Violet (`#9D4EDD`) for secondary accents
+- Amethyst Violet / Periwinkle (`#8B7DBE`) for secondary accents
 - Razor-thin glowing contours on active tabs, inputs, container edges, and primary buttons
 - Extension cards with micro-border glow that intensifies on hover (0.2s ease-in-out)
 
