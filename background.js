@@ -178,20 +178,25 @@ function openExtensionSync() {
   chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?tab=1') });
 }
 
-chrome.contextMenus.removeAll(() => {
-  chrome.contextMenus.create(
-    { id: 'open-extension-sync', title: 'Open ExtensionSync', contexts: ['action'] },
-    () => void chrome.runtime.lastError
-  );
-});
+// Guarded so a missing/not-yet-granted API can never crash the service worker
+// at load (an uncaught top-level error fails the whole SW registration).
+if (chrome.contextMenus) {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create(
+      { id: 'open-extension-sync', title: 'Open ExtensionSync', contexts: ['action'] },
+      () => void chrome.runtime.lastError
+    );
+  });
+  chrome.contextMenus.onClicked.addListener((info) => {
+    if (info.menuItemId === 'open-extension-sync') openExtensionSync();
+  });
+}
 
-chrome.contextMenus.onClicked.addListener((info) => {
-  if (info.menuItemId === 'open-extension-sync') openExtensionSync();
-});
-
-chrome.runtime.onCommand.addListener((command) => {
-  if (command === 'open-extension-sync') openExtensionSync();
-});
+if (chrome.runtime && chrome.runtime.onCommand) {
+  chrome.runtime.onCommand.addListener((command) => {
+    if (command === 'open-extension-sync') openExtensionSync();
+  });
+}
 
 /* --------------------------------------------------------------------------
  * EXTENSION STATE MONITORING
