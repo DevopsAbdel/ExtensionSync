@@ -401,8 +401,10 @@ function toBackupRecord(ext) {
  * fully machine-parseable. A rich metadata header describes the source browser,
  * profile, and export time.
  *
- * Note: chrome.downloads.download can write a data: URL blob directly from
- * the popup context without needing any file-system permission.
+ * Note: chrome.downloads.download can write a Blob object URL directly from
+ * the popup context without needing any file-system permission. We pass a Blob
+ * object URL (not a data: URL) because Chrome ignores the `filename` option for
+ * data: URLs and falls back to a default/random name.
  */
 async function exportAll() {
   dom.exportAllBtn.disabled = true;
