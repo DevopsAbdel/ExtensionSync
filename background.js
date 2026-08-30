@@ -396,12 +396,22 @@ function parseStoreMeta(html, id) {
       if (m) author = m[1].replace(/\\u0026/g, '&').trim();
     }
 
+    // "Updated" date from the rendered detail DOM, e.g.
+    //   Updated</div><div>August 18, 2026</div>
+    let updatedMs = null;
+    const upd = html.match(/Updated<\/div><div>([A-Z][a-z]+ \d{1,2}, \d{4})<\/div>/);
+    if (upd) {
+      const ts = Date.parse(upd[1]);
+      if (!Number.isNaN(ts)) updatedMs = ts;
+    }
+
     return {
       id,
       author: author || null,
       rating,          // average rating (0-5)
       numRatings,      // number of user ratings
-      users            // approx active user count
+      users,           // approx active user count
+      updatedMs        // last-updated epoch ms (from the page), or null
     };
   } catch {
     return null;
@@ -448,8 +458,73 @@ async function fetchStoreMeta(id) {
  * Parses the Chrome Web Store search-results page into extension summaries.
  * Results live in the `AF_initDataCallback({key: 'ds:1' ...})` payload, each
  * item being a 20-field array: [id, icon, name, rating, numRatings, icon2,
- * description, homepage, ..., users, ..., manifestJson, name].
+ * description, homepage, ..., users, ..., manifestJson, name]. The item also
+ * carries its category at [11] (a JSON-encoded `[slug, null, id]` array) and
+ * rendered cards expose a per-extension "verified publisher" badge.
  */
+// Friendly labels for the CWS category slugs seen in search results.
+const CATEGORY_LABELS = {
+  'make_chrome_yours': 'Make Chrome yours',
+  'productivity': 'Productivity',
+  'workflow': 'Workflow',
+  'privacy': 'Privacy',
+  'security': 'Security',
+  'social': 'Social',
+  'communication': 'Communication',
+  'accessibility': 'Accessibility',
+  'developer_tools': 'Developer tools',
+  'fun': 'Fun',
+  'photos': 'Photos',
+  'shopping': 'Shopping',
+  'travel': 'Travel',
+  'search_tools': 'Search tools',
+  'news': 'News',
+  'games': 'Games',
+  'blogging': 'Blogging',
+  'sports': 'Sports',
+  'education': 'Education',
+  'entertainment': 'Entertainment',
+  'utilities': 'Utilities',
+  'tools': 'Tools'
+};
+
+/** Maps a CWS category slug (e.g. "make_chrome_yours/privacy") to a label. */
+function categoryLabel(slug) {
+  if (!slug) return null;
+  const parts = slug.split('/').filter(Boolean);
+  const last = parts[parts.length - 1];
+  if (!last) return null;
+  const known = CATEGORY_LABELS[last] || CATEGORY_LABELS[parts[0]];
+  if (known) return known;
+  return last.charAt(0).toUpperCase() + last.slice(1);
+}
+
+/**
+ * Scans the search-results HTML for the rendered result cards and records
+ * which extension ids carry a "verified publisher" badge. The cards are
+ * serialized as `base64(...); track:click,keyboard_enter; index:N` tokens,
+ * each decoding to `[[id, ...]]`; a card whose DOM contains the
+ * `Published by verified publisher` aria-label is verified.
+ */
+function parseVerifiedIds(html) {
+  const verified = new Set();
+  const cardRe = /([A-Za-z0-9+/=]{30,})={0,2}; track:click,keyboard_enter; index:\d+/g;
+  let m;
+  while ((m = cardRe.exec(html)) !== null) {
+    let id = null;
+    try {
+      const arr = JSON.parse(Buffer.from(m[1], 'base64').toString('utf8'));
+      if (Array.isArray(arr) && Array.isArray(arr[0])) id = arr[0][0];
+    } catch { /* skip malformed card */ }
+    if (!id) continue;
+    const chunk = html.slice(m.index, m.index + 5000);
+    if (chunk.indexOf('Published by verified publisher') !== -1) {
+      verified.add(id);
+    }
+  }
+  return verified;
+}
+
 function parseStoreSearch(html) {
   const results = [];
   try {
@@ -465,6 +540,7 @@ function parseStoreSearch(html) {
 
     const data = JSON.parse(html.slice(outerStart, outerEnd + 1));
     const seen = new Set();
+    const verifiedIds = parseVerifiedIds(html);
 
     (function scan(node) {
       if (!Array.isArray(node)) return;
@@ -483,6 +559,18 @@ function parseStoreSearch(html) {
             const m = node[18].match(/"author"\s*:\s*"([^"]+)"/);
             if (m) author = m[1].replace(/\\u0026/g, '&').trim();
           }
+          let category = null;
+          let categorySlug = null;
+          const catRaw = node[11];
+          if (Array.isArray(catRaw)) {
+            categorySlug = typeof catRaw[0] === 'string' ? catRaw[0] : null;
+          } else if (typeof catRaw === 'string') {
+            try {
+              const p = JSON.parse(catRaw);
+              if (Array.isArray(p)) categorySlug = typeof p[0] === 'string' ? p[0] : null;
+            } catch { /* ignore */ }
+          }
+          if (categorySlug) category = categoryLabel(categorySlug);
           results.push({
             id: node[0],
             name: node[2],
@@ -491,7 +579,10 @@ function parseStoreSearch(html) {
             numRatings: node[4],
             users: node[14],
             description: typeof node[6] === 'string' ? node[6] : null,
-            author
+            author,
+            category,          // human label, e.g. "Privacy"
+            categorySlug,      // raw CWS slug, e.g. "make_chrome_yours/privacy"
+            verified: verifiedIds.has(node[0])
           });
         }
         return;

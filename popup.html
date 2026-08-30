@@ -68,22 +68,54 @@
           <span>Searching the store…</span>
         </div>
 
-        <div id="store-filter-bar" class="store-filters is-hidden">
-          <label class="store-filter">
-            <span>Éditeur</span>
-            <select id="store-filter-publisher" class="neon-select" aria-label="Filter by publisher">
-              <option value="">Tous les éditeurs</option>
-            </select>
-          </label>
-          <label class="store-filter">
-            <span>Note min.</span>
-            <select id="store-filter-rating" class="neon-select" aria-label="Filter by minimum rating">
-              <option value="0">Toutes les notes</option>
-              <option value="3">3★ et +</option>
-              <option value="4">4★ et +</option>
-              <option value="4.5">4.5★ et +</option>
-            </select>
-          </label>
+        <div id="store-filter-bar" class="store-filter-panel is-hidden">
+
+          <div class="store-filter-row store-sort-row">
+            <label class="store-filter store-sort">
+              <span>Tri</span>
+              <select id="store-sort" class="neon-select" aria-label="Sort results">
+                <option value="">Par défaut</option>
+                <option value="updated">Dernière mise à jour</option>
+                <option value="rating">Rating</option>
+                <option value="users">Nb. d'utilisateurs</option>
+              </select>
+            </label>
+            <label class="store-filter store-verified" title="Only show extensions whose publisher identity is verified by Google">
+              <span>Éditeur vérifié</span>
+              <span class="store-check-toggle">
+                <input type="checkbox" id="store-verified" aria-label="Verified publisher only">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </span>
+            </label>
+          </div>
+
+          <div class="store-filter-row">
+            <label class="store-filter">
+              <span>Utilisateurs</span>
+              <select id="store-filter-users" class="neon-select" aria-label="Filter by minimum users">
+                <option value="0">Tous</option>
+                <option value="10000">10K+</option>
+                <option value="100000">100K+</option>
+                <option value="1000000">1M+</option>
+              </select>
+            </label>
+            <label class="store-filter">
+              <span>Catégorie</span>
+              <select id="store-filter-category" class="neon-select" aria-label="Filter by category">
+                <option value="">Toutes</option>
+              </select>
+            </label>
+            <label class="store-filter">
+              <span>Note min.</span>
+              <select id="store-filter-rating" class="neon-select" aria-label="Filter by minimum rating">
+                <option value="0">Toutes</option>
+                <option value="3">3★ et +</option>
+                <option value="4">4★ et +</option>
+                <option value="4.5">4.5★ et +</option>
+              </select>
+            </label>
+          </div>
+
         </div>
 
         <div id="store-selection-bar" class="selection-bar is-hidden" aria-live="polite">

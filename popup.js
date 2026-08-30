@@ -52,7 +52,10 @@ const dom = {
   storeSearchStatus: document.getElementById('store-search-status'),
   storeSearchLoading: document.getElementById('store-search-loading'),
   storeFilterBar: document.getElementById('store-filter-bar'),
-  storeFilterPublisher: document.getElementById('store-filter-publisher'),
+  storeSort: document.getElementById('store-sort'),
+  storeVerified: document.getElementById('store-verified'),
+  storeFilterUsers: document.getElementById('store-filter-users'),
+  storeFilterCategory: document.getElementById('store-filter-category'),
   storeFilterRating: document.getElementById('store-filter-rating'),
   storeResults: document.getElementById('store-results'),
   storeSelectAll: document.getElementById('store-select-all'),
@@ -96,8 +99,12 @@ const state = {
   sort: '',           // rating sort mode: '' | 'rated'
   storeResults: [],   // current online store search results
   storeSelection: new Set(), // ids of store results chosen to install
-  storePublisher: '',  // store search publisher filter
-  storeMinRating: 0    // store search minimum rating filter
+  storeMinUsers: 0,    // store search minimum user count
+  storeVerified: false,// store search: verified publisher only
+  storeCategory: '',   // store search category filter
+  storeMinRating: 0,   // store search minimum rating filter
+  storeSort: '',       // store search sort: '' | 'updated' | 'rating' | 'users'
+  storeUpdatedMs: {}   // id -> last-updated epoch ms (fetched on demand)
 };
 
 /* --------------------------------------------------------------------------
@@ -1091,10 +1098,17 @@ async function runStoreSearch(query) {
   dom.storeSearchStatus.classList.remove('is-error');
   state.storeResults = [];
   state.storeSelection.clear();
-  state.storePublisher = '';
+  state.storeMinUsers = 0;
+  state.storeVerified = false;
+  state.storeCategory = '';
   state.storeMinRating = 0;
-  dom.storeFilterPublisher.value = '';
+  state.storeSort = '';
+  state.storeUpdatedMs = {};
+  dom.storeFilterUsers.value = '0';
+  dom.storeVerified.checked = false;
+  dom.storeFilterCategory.value = '';
   dom.storeFilterRating.value = '0';
+  dom.storeSort.value = '';
   updateStoreSelectionUI();
 
   if (!q) { updateStoreSelectionUI(); return; }
@@ -1126,39 +1140,70 @@ async function runStoreSearch(query) {
   }
 }
 
-/** Returns store results filtered by the active publisher + min-rating filters. */
+/** Returns store results filtered + sorted by the active controls. */
 function getFilteredStoreResults() {
-  const pub = (state.storePublisher || '').trim().toLowerCase();
+  const minUsers = Number(state.storeMinUsers) || 0;
   const minRating = Number(state.storeMinRating) || 0;
-  return state.storeResults.filter((r) => {
-    if (pub) {
-      const author = (r.author || '').trim().toLowerCase();
-      if (author !== pub && !author.includes(pub)) return false;
-    }
+  const cat = (state.storeCategory || '').trim();
+  const onlyVerified = state.storeVerified === true;
+
+  let out = state.storeResults.filter((r) => {
+    if (minUsers > 0 && typeof r.users === 'number' && r.users < minUsers) return false;
     if (minRating > 0 && typeof r.rating === 'number' && r.rating < minRating) return false;
+    if (cat && String(r.category || '').toLowerCase() !== cat.toLowerCase()) return false;
+    if (onlyVerified && !r.verified) return false;
     return true;
   });
+
+  switch (state.storeSort) {
+    case 'rating':
+      out = [...out].sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1));
+      break;
+    case 'users':
+      out = [...out].sort((a, b) => (b.users ?? -1) - (a.users ?? -1));
+      break;
+    case 'updated':
+      out = [...out].sort((a, b) =>
+        (state.storeUpdatedMs[b.id] ?? 0) - (state.storeUpdatedMs[a.id] ?? 0));
+      break;
+    default:
+      break;
+  }
+  return out;
 }
 
-/** Rebuilds the publisher dropdown options from all search results. */
-function rebuildStorePublisherOptions(keep) {
-  const opts = new Map();
+/** Rebuilds the category dropdown options from all search results. */
+function rebuildStoreCategoryOptions() {
+  const opts = new Set();
   for (const r of state.storeResults) {
-    const author = (r.author || '').trim();
-    if (author && !opts.has(author)) opts.set(author, author);
+    if (r.category) opts.add(r.category);
   }
-  const current = keep && [...opts.keys()].includes(dom.storeFilterPublisher.value)
-    ? dom.storeFilterPublisher.value
-    : '';
-  dom.storeFilterPublisher.innerHTML = '<option value="">Tous les éditeurs</option>' +
-    [...opts.keys()].sort((a, b) => a.localeCompare(b)).map((a) =>
-      `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
-  dom.storeFilterPublisher.value = current;
+  const current = dom.storeFilterCategory.value;
+  dom.storeFilterCategory.innerHTML = '<option value="">Toutes</option>' +
+    [...opts].sort((a, b) => a.localeCompare(b)).map((c) =>
+      `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  dom.storeFilterCategory.value = opts.has(current) ? current : '';
+}
+
+/** Refreshes meta (which now includes last-updated) for the current results. */
+async function fetchSearchUpdated() {
+  const ids = state.storeResults.map((r) => r.id);
+  if (ids.length === 0) return;
+  try {
+    const res = await sendToBackground({ type: 'GET_STORE_META', ids });
+    if (res?.ok && res.metas) {
+      for (const [id, meta] of Object.entries(res.metas)) {
+        if (typeof meta.updatedMs === 'number') state.storeUpdatedMs[id] = meta.updatedMs;
+      }
+    }
+  } catch {
+    /* updated meta is best-effort */
+  }
 }
 
 /** Renders online store result cards with a selection checkbox. */
 function renderStoreResults() {
-  rebuildStorePublisherOptions(true);
+  rebuildStoreCategoryOptions();
   dom.storeFilterBar.classList.toggle('is-hidden', state.storeResults.length === 0);
 
   const results = getFilteredStoreResults();
@@ -1185,7 +1230,10 @@ function renderStoreResults() {
            target="_blank" rel="noopener noreferrer">
           ${icon}
           <div class="store-card-body">
-            <span class="store-card-name">${escapeHtml(r.name)}</span>
+            <div class="store-card-title">
+              <span class="store-card-name">${escapeHtml(r.name)}</span>
+              ${r.verified ? '<span class="store-card-verified" title="Verified publisher">✓</span>' : ''}
+            </div>
             ${meta}
             ${desc ? `<div class="store-card-desc">${desc}</div>` : ''}
           </div>
@@ -1249,13 +1297,33 @@ dom.storeSelectAll.addEventListener('change', () => {
   renderStoreResults();
 });
 
-dom.storeFilterPublisher.addEventListener('change', () => {
-  state.storePublisher = dom.storeFilterPublisher.value;
+dom.storeFilterUsers.addEventListener('change', () => {
+  state.storeMinUsers = Number(dom.storeFilterUsers.value) || 0;
+  renderStoreResults();
+});
+
+dom.storeVerified.addEventListener('change', () => {
+  state.storeVerified = dom.storeVerified.checked;
+  renderStoreResults();
+});
+
+dom.storeFilterCategory.addEventListener('change', () => {
+  state.storeCategory = dom.storeFilterCategory.value;
   renderStoreResults();
 });
 
 dom.storeFilterRating.addEventListener('change', () => {
   state.storeMinRating = Number(dom.storeFilterRating.value) || 0;
+  renderStoreResults();
+});
+
+dom.storeSort.addEventListener('change', async () => {
+  state.storeSort = dom.storeSort.value;
+  if (state.storeSort === 'updated') {
+    // Last-updated lives on each result's detail page; fetch (with caching)
+    // before re-sorting so the order is meaningful.
+    await fetchSearchUpdated();
+  }
   renderStoreResults();
 });
 
