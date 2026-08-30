@@ -533,6 +533,17 @@ function categoryLabel(slug) {
 }
 
 /**
+ * Decodes a base64 payload to a UTF-8 string without relying on Node's
+ * `Buffer` (not available in MV3 service workers). `atob` + `TextDecoder`
+ * are both available globally in the service worker.
+ */
+function base64DecodeToUtf8(b64) {
+  const binary = atob(b64);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+/**
  * Scans the search-results HTML for the rendered result cards and records
  * which extension ids carry a "verified publisher" badge. The cards are
  * serialized as `base64(...); track:click,keyboard_enter; index:N` tokens,
@@ -546,7 +557,7 @@ function parseVerifiedIds(html) {
   while ((m = cardRe.exec(html)) !== null) {
     let id = null;
     try {
-      const arr = JSON.parse(Buffer.from(m[1], 'base64').toString('utf8'));
+      const arr = JSON.parse(base64DecodeToUtf8(m[1]));
       if (Array.isArray(arr) && Array.isArray(arr[0])) id = arr[0][0];
     } catch { /* skip malformed card */ }
     if (!id) continue;
