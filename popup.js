@@ -181,14 +181,14 @@ async function loadExtensions() {
   } catch (error) {
     setSyncStatus('error');
     // Fall back to the synced payload if management enumeration fails.
+    // Ask the background worker, which reassembles the chunked payload.
     try {
-      const { extensionsync_payload: cached = [] } =
-        await chrome.storage.sync.get('extensionsync_payload');
-      if (Array.isArray(cached) && cached.length > 0) {
-        state.extensions = cached;
+      const res = await sendToBackground({ type: 'GET_PAYLOAD' });
+      if (res?.ok && Array.isArray(res.payload) && res.payload.length > 0) {
+        state.extensions = res.payload;
       }
     } catch {
-      /* storage also unavailable */
+      /* background unreachable */
     }
     renderExportGrid();
   }
@@ -437,11 +437,14 @@ async function renderImportDashboard(extensions) {
 
   let installed = [];
   try {
-    const stored = await chrome.storage.sync.get('extensionsync_payload');
-    installed = stored.extensionsync_payload || [];
+    // Ask the background worker for the current (reassembled) payload so we
+    // can mark extensions that are already installed on this browser.
+    const res = await sendToBackground({ type: 'GET_PAYLOAD' });
+    if (res?.ok && Array.isArray(res.payload)) {
+      installed = res.payload;
+    }
   } catch {
-    // chrome.storage unavailable (e.g. running outside extension context);
-    // degrade to showing every item as needing installation.
+    // Background unreachable; degrade to showing every item as needing install.
     installed = [];
   }
 
