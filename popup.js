@@ -401,10 +401,12 @@ function toBackupRecord(ext) {
  * fully machine-parseable. A rich metadata header describes the source browser,
  * profile, and export time.
  *
- * Note: we use a base64 data: URL with the application/octet-stream MIME type.
- * Chromium ignores the `filename` option for "known" MIME types (e.g.
- * application/json) and for blob: URLs, which would make downloads land with
- * random names; octet-stream reliably honors the requested filename.
+ * Note: we use a base64 data: URL with the application/octet-stream MIME type
+ * and `saveAs: false`. Chromium ignores the `filename` option for "known" MIME
+ * types (e.g. application/json), for blob: URLs, and when `saveAs: true`
+ * triggers a dialog — all of which download with random/default names.
+ * octet-stream + saveAs:false reliably writes the requested filename directly
+ * to the Downloads folder.
  */
 async function exportAll() {
   dom.exportAllBtn.disabled = true;
@@ -452,9 +454,9 @@ async function exportAll() {
 
     // Build a UTF-8 base64 data: URL. We use the application/octet-stream MIME
     // type on purpose: Chromium browsers ignore the `filename` option for
-    // "known" MIME types (application/json) and for blob: URLs — both caused
-    // downloads to land with random names like "téléchargement.json" or a
-    // UUID. With octet-stream the requested filename is honored.
+    // "known" MIME types (application/json) and for blob: URLs, and it is also
+    // unreliable when `saveAs: true` shows a dialog. With octet-stream and
+    // `saveAs: false` the requested filename is written directly and reliably.
     const bytes = new TextEncoder().encode(json);
     let binary = '';
     const chunk = 0x8000;
@@ -466,7 +468,7 @@ async function exportAll() {
     await chrome.downloads.download({
       url: dataUrl,
       filename,
-      saveAs: true
+      saveAs: false
     });
 
     showCallout(`Exported ${records.length} extension${records.length === 1 ? '' : 's'}`);
