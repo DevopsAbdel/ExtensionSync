@@ -549,6 +549,33 @@ code {
   border-radius: var(--radius-sm);
 }
 
+.store-filters {
+  display: flex;
+  gap: var(--space-3);
+  align-items: end;
+  margin: 6px 0;
+  flex-wrap: wrap;
+}
+
+.store-filters.is-hidden {
+  display: none;
+}
+
+.store-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+  flex: 1 1 150px;
+}
+
+.store-filter > span {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .store-results {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

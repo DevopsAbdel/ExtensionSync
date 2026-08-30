@@ -68,6 +68,24 @@
           <span>Searching the store…</span>
         </div>
 
+        <div id="store-filter-bar" class="store-filters is-hidden">
+          <label class="store-filter">
+            <span>Éditeur</span>
+            <select id="store-filter-publisher" class="neon-select" aria-label="Filter by publisher">
+              <option value="">Tous les éditeurs</option>
+            </select>
+          </label>
+          <label class="store-filter">
+            <span>Note min.</span>
+            <select id="store-filter-rating" class="neon-select" aria-label="Filter by minimum rating">
+              <option value="0">Toutes les notes</option>
+              <option value="3">3★ et +</option>
+              <option value="4">4★ et +</option>
+              <option value="4.5">4.5★ et +</option>
+            </select>
+          </label>
+        </div>
+
         <div id="store-selection-bar" class="selection-bar is-hidden" aria-live="polite">
           <label class="sel-check sel-all" title="Toggle all results">
             <input type="checkbox" id="store-select-all" data-action="store-select-all">

@@ -53,6 +53,9 @@ const dom = {
   storeSearchBtn: document.getElementById('store-search-btn'),
   storeSearchStatus: document.getElementById('store-search-status'),
   storeSearchLoading: document.getElementById('store-search-loading'),
+  storeFilterBar: document.getElementById('store-filter-bar'),
+  storeFilterPublisher: document.getElementById('store-filter-publisher'),
+  storeFilterRating: document.getElementById('store-filter-rating'),
   storeResults: document.getElementById('store-results'),
   storeSelectAll: document.getElementById('store-select-all'),
   storeSelectionBar: document.getElementById('store-selection-bar'),
@@ -94,7 +97,9 @@ const state = {
   publisher: '',      // publisher filter value
   sort: '',           // rating sort mode: '' | 'rated'
   storeResults: [],   // current online store search results
-  storeSelection: new Set() // ids of store results chosen to install
+  storeSelection: new Set(), // ids of store results chosen to install
+  storePublisher: '',  // store search publisher filter
+  storeMinRating: 0    // store search minimum rating filter
 };
 
 /* --------------------------------------------------------------------------
@@ -1114,6 +1119,10 @@ async function runStoreSearch(query) {
   dom.storeSearchStatus.classList.remove('is-error');
   state.storeResults = [];
   state.storeSelection.clear();
+  state.storePublisher = '';
+  state.storeMinRating = 0;
+  dom.storeFilterPublisher.value = '';
+  dom.storeFilterRating.value = '0';
   updateStoreSelectionUI();
 
   if (!q) { updateStoreSelectionUI(); return; }
@@ -1145,9 +1154,48 @@ async function runStoreSearch(query) {
   }
 }
 
+/** Returns store results filtered by the active publisher + min-rating filters. */
+function getFilteredStoreResults() {
+  const pub = (state.storePublisher || '').trim().toLowerCase();
+  const minRating = Number(state.storeMinRating) || 0;
+  return state.storeResults.filter((r) => {
+    if (pub) {
+      const author = (r.author || '').trim().toLowerCase();
+      if (author !== pub && !author.includes(pub)) return false;
+    }
+    if (minRating > 0 && typeof r.rating === 'number' && r.rating < minRating) return false;
+    return true;
+  });
+}
+
+/** Rebuilds the publisher dropdown options from all search results. */
+function rebuildStorePublisherOptions(keep) {
+  const opts = new Map();
+  for (const r of state.storeResults) {
+    const author = (r.author || '').trim();
+    if (author && !opts.has(author)) opts.set(author, author);
+  }
+  const current = keep && [...opts.keys()].includes(dom.storeFilterPublisher.value)
+    ? dom.storeFilterPublisher.value
+    : '';
+  dom.storeFilterPublisher.innerHTML = '<option value="">Tous les éditeurs</option>' +
+    [...opts.keys()].sort((a, b) => a.localeCompare(b)).map((a) =>
+      `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+  dom.storeFilterPublisher.value = current;
+}
+
 /** Renders online store result cards with a selection checkbox. */
 function renderStoreResults() {
-  const results = state.storeResults;
+  rebuildStorePublisherOptions(true);
+  dom.storeFilterBar.classList.toggle('is-hidden', state.storeResults.length === 0);
+
+  const results = getFilteredStoreResults();
+  if (results.length === 0 && state.storeResults.length > 0) {
+    dom.storeResults.innerHTML =
+      '<div class="store-card-empty">No extensions match the current filters.</div>';
+    updateStoreSelectionUI();
+    return;
+  }
   dom.storeResults.innerHTML = results.map((r) => {
     const meta = renderStoreMetaLine(r);
     const desc = r.description ? escapeHtml(r.description) : '';
@@ -1180,7 +1228,9 @@ function renderStoreResults() {
  * toolbar (count, button state, select-all reflect).
  */
 function updateStoreSelectionUI() {
-  const total = state.storeResults.length;
+  const filtered = getFilteredStoreResults();
+  const total = filtered.length;
+  const selectedVisible = filtered.filter((r) => state.storeSelection.has(r.id)).length;
   const count = state.storeSelection.size;
   const hasResults = total > 0;
 
@@ -1188,8 +1238,8 @@ function updateStoreSelectionUI() {
   dom.storeInstallHint.classList.toggle('is-hidden', count === 0);
 
   if (hasResults) {
-    dom.storeSelectAll.checked = count === total;
-    dom.storeSelectAll.indeterminate = count > 0 && count < total;
+    dom.storeSelectAll.checked = selectedVisible === total && total > 0;
+    dom.storeSelectAll.indeterminate = selectedVisible > 0 && selectedVisible < total;
   } else {
     dom.storeSelectAll.checked = false;
     dom.storeSelectAll.indeterminate = false;
@@ -1217,12 +1267,23 @@ dom.storeResults.addEventListener('change', (e) => {
 });
 
 dom.storeSelectAll.addEventListener('change', () => {
+  const filtered = getFilteredStoreResults();
   const selectAll = dom.storeSelectAll.checked;
   if (selectAll) {
-    state.storeResults.forEach((r) => state.storeSelection.add(r.id));
+    filtered.forEach((r) => state.storeSelection.add(r.id));
   } else {
     state.storeResults.forEach((r) => state.storeSelection.delete(r.id));
   }
+  renderStoreResults();
+});
+
+dom.storeFilterPublisher.addEventListener('change', () => {
+  state.storePublisher = dom.storeFilterPublisher.value;
+  renderStoreResults();
+});
+
+dom.storeFilterRating.addEventListener('change', () => {
+  state.storeMinRating = Number(dom.storeFilterRating.value) || 0;
   renderStoreResults();
 });
 
