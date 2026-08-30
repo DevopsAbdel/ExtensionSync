@@ -109,13 +109,22 @@ async function sendToBackground(message) {
   return chrome.runtime.sendMessage(message);
 }
 
-/** Detects the Chromium browser from the User-Agent string. */
-function detectBrowser() {
+/** Detects the Chromium-based browser. */
+async function detectBrowser() {
+  // Brave removes "Brave" from its User-Agent by default, but exposes the
+  // navigator.brave.isBrave() flag marker — check it before the UA fallback.
+  try {
+    if (navigator.brave && typeof navigator.brave.isBrave === 'function') {
+      if (await navigator.brave.isBrave()) return 'Brave';
+    }
+  } catch {
+    /* detection unavailable — fall through to UA */
+  }
   const ua = navigator.userAgent;
   if (/Edg\/\d/.test(ua)) return 'Edge';
-  if (/Brave/.test(ua)) return 'Brave';
   if (/Vivaldi/.test(ua)) return 'Vivaldi';
   if (/OPR\/|Opera/.test(ua)) return 'Opera';
+  if (/Brave/.test(ua)) return 'Brave';
   if (/Chrome\/\d/.test(ua)) return 'Chrome';
   if (/Chromium\/\d/.test(ua)) return 'Chromium';
   return 'Browser';
@@ -422,7 +431,7 @@ async function exportAll() {
 
     const enabledCount = records.filter((r) => r.enabled).length;
 
-    const browser = detectBrowser();
+    const browser = await detectBrowser();
     const profile = await detectProfileLabel();
     const now = new Date();
 
