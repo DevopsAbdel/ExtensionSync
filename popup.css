@@ -533,8 +533,20 @@ code {
   color: var(--text-faint);
 }
 
+.store-status.is-hidden {
+  display: none;
+}
+
 .store-status.is-error {
   color: var(--accent-danger, #ff5768);
+}
+
+.store-status code {
+  font-size: 11px;
+  color: var(--neon-cyan);
+  background: var(--bg-elevated);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
 }
 
 .store-results {
@@ -550,10 +562,28 @@ code {
   border-radius: var(--radius-md);
   padding: var(--space-3);
   display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.store-card .sel-check {
+  margin-top: 2px;
+}
+
+.store-card.is-selected {
+  border-color: var(--border-cyan);
+  box-shadow: 0 0 12px -3px var(--neon-cyan-dim), inset 0 0 0 1px var(--neon-cyan-dim);
+}
+
+.store-card-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   gap: var(--space-3);
   align-items: flex-start;
-  cursor: pointer;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  color: inherit;
+  text-decoration: none;
 }
 
 .store-card:hover {
@@ -562,7 +592,7 @@ code {
   transform: translateY(-1px);
 }
 
-.store-card:focus-visible {
+.store-card:focus-within {
   outline: none;
   border-color: var(--neon-cyan);
   box-shadow: 0 0 0 2px var(--neon-cyan-dim);
@@ -1236,6 +1266,20 @@ code {
   color: var(--text-faint);
   border-top: 1px solid var(--border-default);
   padding-top: var(--space-3);
+}
+
+.settings-hint {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.settings-hint code {
+  font-size: 11px;
+  color: var(--neon-cyan);
+  background: var(--bg-elevated);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
 }
 
 /* --------------------------------------------------------------------------

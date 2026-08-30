@@ -67,6 +67,26 @@
           <span class="spinner" aria-hidden="true"></span>
           <span>Searching the store…</span>
         </div>
+
+        <div id="store-selection-bar" class="selection-bar is-hidden" aria-live="polite">
+          <label class="sel-check sel-all" title="Toggle all results">
+            <input type="checkbox" id="store-select-all" data-action="store-select-all">
+            <span class="sel-check-box"></span>
+          </label>
+          <span id="store-selection-count" class="selection-count">0 selected</span>
+          <button id="install-store-btn" class="btn-neon btn-sm" type="button">Install Selected</button>
+        </div>
+        <p id="store-install-hint" class="store-status is-hidden">
+          Saves your selected IDs to Downloads, then run
+          <code>tools\install-extensions.cmd</code> to batch-install the
+          matching <code>&lt;id&gt;.crx</code> files (you must have them).
+        </p>
+
+        <div id="store-install-progress" class="launch-progress is-hidden" role="status" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="store-install-progress-text">Opening store pages…</span>
+        </div>
+
         <div id="store-results" class="store-results" aria-live="polite"></div>
       </div>
 
@@ -225,12 +245,15 @@
             type="url"
             id="store-proxy-input"
             class="neon-input neon-underline"
-            placeholder="https://your-proxy.example.com/cors?url="
+            placeholder="http://localhost:8123"
             autocomplete="off"
             spellcheck="false"
           >
           <button id="save-store-proxy-btn" class="btn-outline" type="button">Save</button>
         </div>
+        <p class="settings-hint">
+          Default: <code>http://localhost:8123</code> (run <code>node tools/cors-proxy-node.js 8123</code>). For a public proxy, use HTTPS.
+        </p>
         <p id="store-proxy-status" class="endpoint-status" role="status" aria-live="polite"></p>
       </div>
     </section>

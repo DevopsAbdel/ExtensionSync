@@ -54,6 +54,13 @@ const dom = {
   storeSearchStatus: document.getElementById('store-search-status'),
   storeSearchLoading: document.getElementById('store-search-loading'),
   storeResults: document.getElementById('store-results'),
+  storeSelectAll: document.getElementById('store-select-all'),
+  storeSelectionBar: document.getElementById('store-selection-bar'),
+  storeSelectionCount: document.getElementById('store-selection-count'),
+  installStoreBtn: document.getElementById('install-store-btn'),
+  storeInstallHint: document.getElementById('store-install-hint'),
+  storeInstallProgress: document.getElementById('store-install-progress'),
+  storeInstallProgressText: document.getElementById('store-install-progress-text'),
 
   // Import
   dropzone: document.getElementById('dropzone'),
@@ -85,7 +92,9 @@ const state = {
   selected: new Set(), // ids checked for import launch
   filter: '',         // free-text name/id search
   publisher: '',      // publisher filter value
-  sort: ''            // rating sort mode: '' | 'rated'
+  sort: '',           // rating sort mode: '' | 'rated'
+  storeResults: [],   // current online store search results
+  storeSelection: new Set() // ids of store results chosen to install
 };
 
 /* --------------------------------------------------------------------------
@@ -916,43 +925,66 @@ dom.clearImportBtn.addEventListener('click', () => {
  * Store pages in new tabs for each checked extension. Sequential creation
  * with a small delay prevents the browser from throttling burst tab opens.
  * ------------------------------------------------------------------------ */
-async function initializeSyncLaunch() {
-  const checkboxes = [...dom.importList.querySelectorAll('input[data-import-index]:checked')];
 
-  if (checkboxes.length === 0) return;
-
-  dom.initializeSyncBtn.disabled = true;
-  dom.launchProgress.classList.remove('is-hidden');
+/**
+ * Opens the Chrome Web Store install pages for each URL, one at a time, with a
+ * small delay to avoid the browser's rapid-open throttle. Shows progress via
+ * the provided progress elements.
+ *
+ * @param {string[]} urls - store page URLs to open
+ * @param {object} refs - { progress, progressText, button } DOM references
+ * @returns {Promise<number>} number of tabs successfully opened
+ */
+async function openWebStorePages(urls, refs) {
+  const { progress, progressText, button } = refs;
+  const total = urls.length;
+  if (progress) progress.classList.remove('is-hidden');
+  if (button) button.disabled = true;
   setSyncStatus('pending');
 
   let opened = 0;
+  for (let i = 0; i < urls.length; i++) {
+    if (progressText) {
+      progressText.textContent = `Opening store page… (${i + 1}/${total})`;
+    }
+    try {
+      await chrome.tabs.create({ url: urls[i] });
+      opened++;
+    } catch (err) {
+      console.error('[ExtensionSync] failed to open tab:', err);
+    }
+    await new Promise((r) => setTimeout(r, 350));
+  }
+
+  if (progress) progress.classList.add('is-hidden');
+  if (button) button.disabled = false;
+  setSyncStatus('synced');
+  return opened;
+}
+
+async function initializeSyncLaunch() {
+  const checkboxes = [...dom.importList.querySelectorAll('input[data-import-index]:checked')];
+  if (checkboxes.length === 0) return;
+
+  const urls = [];
   for (const cb of checkboxes) {
     const index = Number(cb.dataset.importIndex);
     const ext = state.importData?.[index];
     if (!ext) continue;
-
-    dom.launchProgressText.textContent = `Opening ${ext.name || 'extension'}… (${opened + 1}/${checkboxes.length})`;
-
     // Prefer a canonical web store URL if present in the backup; otherwise
     // derive from the ID.
     const url = (ext.webStoreUrl && /^https:\/\//i.test(ext.webStoreUrl))
       ? ext.webStoreUrl
       : `https://chromewebstore.google.com/detail/-/${ext.id}`;
-
-    try {
-      await chrome.tabs.create({ url });
-      opened++;
-    } catch (err) {
-      console.error('[ExtensionSync] failed to open tab:', err);
-    }
-
-    // 350ms pause between opens to avoid Chrome's rapid-open throttle.
-    await new Promise((r) => setTimeout(r, 350));
+    urls.push(url);
   }
+  if (urls.length === 0) return;
 
-  dom.launchProgress.classList.add('is-hidden');
-  dom.initializeSyncBtn.disabled = false;
-  setSyncStatus('synced');
+  const opened = await openWebStorePages(urls, {
+    progress: dom.launchProgress,
+    progressText: dom.launchProgressText,
+    button: dom.initializeSyncBtn
+  });
   showCallout(`Opened ${opened} web store page${opened === 1 ? '' : 's'}`);
 }
 
@@ -1080,7 +1112,11 @@ async function runStoreSearch(query) {
   dom.storeResults.innerHTML = '';
   dom.storeSearchStatus.textContent = '';
   dom.storeSearchStatus.classList.remove('is-error');
-  if (!q) return;
+  state.storeResults = [];
+  state.storeSelection.clear();
+  updateStoreSelectionUI();
+
+  if (!q) { updateStoreSelectionUI(); return; }
 
   dom.storeSearchLoading.classList.remove('is-hidden');
   try {
@@ -1099,7 +1135,8 @@ async function runStoreSearch(query) {
         '<div class="store-card-empty">No extensions found on the Chrome Web Store.</div>';
       return;
     }
-    renderStoreResults(res.results);
+    state.storeResults = res.results;
+    renderStoreResults();
   } catch {
     dom.storeSearchLoading.classList.add('is-hidden');
     dom.storeSearchStatus.textContent =
@@ -1108,26 +1145,117 @@ async function runStoreSearch(query) {
   }
 }
 
-/** Renders online store result cards. */
-function renderStoreResults(results) {
+/** Renders online store result cards with a selection checkbox. */
+function renderStoreResults() {
+  const results = state.storeResults;
   dom.storeResults.innerHTML = results.map((r) => {
     const meta = renderStoreMetaLine(r);
     const desc = r.description ? escapeHtml(r.description) : '';
+    const isSel = state.storeSelection.has(r.id);
     const icon = r.icon
       ? `<img class="store-card-icon" src="${escapeHtml(r.icon)}" alt="" loading="lazy">`
       : '<div class="store-card-icon"></div>';
     return `
-      <a class="store-card" href="${escapeHtml(`https://chromewebstore.google.com/detail/${r.id}`)}"
-         target="_blank" rel="noopener noreferrer">
-        ${icon}
-        <div class="store-card-body">
-          <span class="store-card-name">${escapeHtml(r.name)}</span>
-          ${meta}
-          ${desc ? `<div class="store-card-desc">${desc}</div>` : ''}
-        </div>
-      </a>`;
+      <article class="store-card${isSel ? ' is-selected' : ''}" data-id="${escapeHtml(r.id)}">
+        <label class="sel-check" title="Select ${escapeHtml(r.name)}">
+          <input type="checkbox" data-action="store-select" data-id="${escapeHtml(r.id)}" ${isSel ? 'checked' : ''}>
+          <span class="sel-check-box"></span>
+        </label>
+        <a class="store-card-link" href="${escapeHtml(`https://chromewebstore.google.com/detail/${r.id}`)}"
+           target="_blank" rel="noopener noreferrer">
+          ${icon}
+          <div class="store-card-body">
+            <span class="store-card-name">${escapeHtml(r.name)}</span>
+            ${meta}
+            ${desc ? `<div class="store-card-desc">${desc}</div>` : ''}
+          </div>
+        </a>
+      </article>`;
   }).join('');
+  updateStoreSelectionUI();
 }
+
+/**
+ * Reflects current store selection state onto the cards and the selection
+ * toolbar (count, button state, select-all reflect).
+ */
+function updateStoreSelectionUI() {
+  const total = state.storeResults.length;
+  const count = state.storeSelection.size;
+  const hasResults = total > 0;
+
+  dom.storeSelectionBar.classList.toggle('is-hidden', !hasResults || count === 0);
+  dom.storeInstallHint.classList.toggle('is-hidden', count === 0);
+
+  if (hasResults) {
+    dom.storeSelectAll.checked = count === total;
+    dom.storeSelectAll.indeterminate = count > 0 && count < total;
+  } else {
+    dom.storeSelectAll.checked = false;
+    dom.storeSelectAll.indeterminate = false;
+  }
+
+  dom.storeSelectionCount.textContent = `${count} selected`;
+  dom.installStoreBtn.disabled = count === 0;
+  dom.installStoreBtn.textContent = count > 0
+    ? `Install Selected (${count})`
+    : 'Install Selected';
+
+  dom.storeResults.querySelectorAll('.store-card').forEach((card) => {
+    const id = card.dataset.id;
+    card.classList.toggle('is-selected', state.storeSelection.has(id));
+  });
+}
+
+dom.storeResults.addEventListener('change', (e) => {
+  const cb = e.target.closest('input[data-action="store-select"]');
+  if (!cb) return;
+  const id = cb.dataset.id;
+  if (cb.checked) state.storeSelection.add(id);
+  else state.storeSelection.delete(id);
+  updateStoreSelectionUI();
+});
+
+dom.storeSelectAll.addEventListener('change', () => {
+  const selectAll = dom.storeSelectAll.checked;
+  if (selectAll) {
+    state.storeResults.forEach((r) => state.storeSelection.add(r.id));
+  } else {
+    state.storeResults.forEach((r) => state.storeSelection.delete(r.id));
+  }
+  renderStoreResults();
+});
+
+/** Opens the Chrome Web Store install page for every selected result. */
+/**
+ * "Install Selected" exports the chosen store IDs to a JSON file in the
+ * Downloads folder. The user then runs tools/install-extensions.cmd once,
+ * which batch-installs the matching <id>.crx files into the browser profile.
+ *
+ * Chrome/Brave sandbox extensions, so the popup cannot run the script itself;
+ * it delivers the ID list the script needs.
+ */
+async function installSelectedStoreResults() {
+  const ids = [...state.storeSelection];
+  if (ids.length === 0) return;
+
+  try {
+    const json = JSON.stringify({ generated: Date.now(), extensions: ids }, null, 2);
+    const dataUrl = `data:application/json;base64,${btoa(unescape(encodeURIComponent(json)))}`;
+    await chrome.downloads.download({
+      url: dataUrl,
+      filename: 'extensionsync-install.json',
+      saveAs: false,
+      conflictAction: 'overwrite'
+    });
+    showCallout(`Exported ${ids.length} ID${ids.length === 1 ? '' : 's'} — run tools/install-extensions.cmd to install.`);
+  } catch (err) {
+    console.error('[ExtensionSync] export failed:', err);
+    showCallout('Failed to export IDs.', 'error');
+  }
+}
+
+dom.installStoreBtn.addEventListener('click', installSelectedStoreResults);
 
 /* --------------------------------------------------------------------------
  * INITIALISATION
