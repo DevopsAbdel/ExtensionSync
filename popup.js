@@ -1031,12 +1031,23 @@ dom.endpointInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') saveEndpoint();
 });
 
-/** Save the Web Store metadata proxy URL (validated to be HTTPS). */
+/**
+ * A store proxy must be HTTPS — except localhost/127.0.0.1, which are allowed
+ * over plain HTTP (e.g. `node tools/cors-proxy-node.js` during local testing).
+ */
+function isValidProxyUrl(url) {
+  if (/^https:\/\//i.test(url)) return true;
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/.*)?$/i.test(url)) return true;
+  return false;
+}
+
+/** Save the Web Store metadata proxy URL. HTTPS required except for localhost. */
 async function saveStoreProxy() {
   const url = dom.storeProxyInput.value.trim();
 
-  if (url && !/^https:\/\//i.test(url)) {
-    dom.storeProxyStatus.textContent = 'Proxy must be an HTTPS URL.';
+  if (url && !isValidProxyUrl(url)) {
+    dom.storeProxyStatus.textContent =
+      'Proxy must be an HTTPS URL (http://localhost is allowed for local testing).';
     dom.storeProxyStatus.className = 'endpoint-status is-error';
     return;
   }

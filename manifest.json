@@ -9,6 +9,10 @@
     "storage",
     "identity"
   ],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

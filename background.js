@@ -52,6 +52,16 @@ function buildWebStoreUrl(id = '') {
 }
 
 /**
+ * A store proxy must be HTTPS — except localhost/127.0.0.1, which are allowed
+ * over plain HTTP (e.g. `node tools/cors-proxy-node.js` during local testing).
+ */
+function isValidProxyUrl(url) {
+  if (/^https:\/\//i.test(url)) return true;
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/.*)?$/i.test(url)) return true;
+  return false;
+}
+
+/**
  * Shards a serialized array of records into multiple sub-arrays, each sized so
  * that its JSON representation stays under the 8 KB per-item quota. Returns an
  * array of sub-arrays (chunks).
@@ -412,7 +422,7 @@ function parseStoreMeta(html, id) {
 async function fetchStoreMeta(id) {
   const { [STORAGE_KEYS.STORE_PROXY]: proxy = '' } =
     await chrome.storage.local.get(STORAGE_KEYS.STORE_PROXY);
-  if (!proxy || !/^https:\/\//i.test(proxy)) return null;
+  if (!proxy || !isValidProxyUrl(proxy)) return null;
 
   const cwsUrl = buildWebStoreUrl(id);
   const controller = new AbortController();
@@ -502,7 +512,7 @@ function parseStoreSearch(html) {
 async function searchWebStore(query) {
   const { [STORAGE_KEYS.STORE_PROXY]: proxy = '' } =
     await chrome.storage.local.get(STORAGE_KEYS.STORE_PROXY);
-  if (!proxy || !/^https:\/\//i.test(proxy)) return null;
+  if (!proxy || !isValidProxyUrl(proxy)) return null;
 
   const target = `https://chromewebstore.google.com/search/${encodeURIComponent(query)}`;
   const controller = new AbortController();
