@@ -592,8 +592,11 @@ code {
 }
 
 .store-verified .store-check-toggle {
-  display: inline-flex;
-  align-items: center;
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 17px;
+  flex-shrink: 0;
 }
 
 .store-card-verified {
