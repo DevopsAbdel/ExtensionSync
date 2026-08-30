@@ -260,6 +260,13 @@ code {
   margin-bottom: var(--space-3);
 }
 
+.panel-toolbar .panel-subtitle {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  margin: 0;
+}
+
 /* --- Neon input fields --- */
 .neon-input {
   flex: 1;
@@ -427,7 +434,6 @@ code {
   width: 100%;
   padding-right: var(--space-5);
 }
-
 .search-clear {
   position: absolute;
   right: 6px;
@@ -460,6 +466,178 @@ code {
 .state-summary {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* --- Filter bar (publisher + rating) --- */
+.filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 130px;
+}
+
+.filter-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+.neon-select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 7px var(--space-3);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.neon-select:hover,
+.neon-select:focus-visible {
+  border-color: var(--neon-cyan);
+  outline: none;
+  box-shadow: 0 0 0 1px var(--neon-cyan-dim);
+}
+
+.link-btn.is-hidden {
+  display: none;
+}
+
+/* --- Chrome Web Store online search --- */
+.store-search {
+  margin-bottom: var(--space-3);
+}
+
+.store-search .panel-toolbar {
+  margin-bottom: var(--space-2);
+}
+
+.store-status {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.store-status.is-error {
+  color: var(--accent-danger, #ff5768);
+}
+
+.store-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.store-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.store-card:hover {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 0 1px var(--neon-cyan-dim);
+  transform: translateY(-1px);
+}
+
+.store-card:focus-visible {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 0 2px var(--neon-cyan-dim);
+}
+
+.store-card-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.04));
+}
+
+.store-card-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.store-card-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.store-card .ext-store {
+  margin-top: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  align-items: center;
+}
+
+.store-card-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.store-card-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: var(--space-4) 0;
+}
+
+.section-divider {
+  border: none;
+  border-top: 1px solid var(--border-default);
+  margin: var(--space-4) 0;
+}
+
+/* --- Web Store meta line on extension cards --- */
+.ext-store {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ext-store .rating {
+  color: var(--neon-violet);
+  font-weight: 600;
 }
 
 /* --- Sticky selection action bar --- */

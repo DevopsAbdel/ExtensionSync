@@ -22,14 +22,20 @@
       </span>
     </div>
     <nav class="tab-bar" role="tablist" aria-label="Sections">
-      <button class="tab-btn is-active" role="tab" aria-selected="true" data-tab="export">
+      <button class="tab-btn is-active" role="tab" aria-selected="true" data-tab="search">
+        Search
+      </button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="export">
         Export
       </button>
       <button class="tab-btn" role="tab" aria-selected="false" data-tab="import">
         Import
       </button>
-      <button class="tab-btn" role="tab" aria-selected="false" data-tab="settings">
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="sync">
         Sync
+      </button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="config">
+        Configuration
       </button>
     </nav>
   </header>
@@ -37,8 +43,36 @@
   <!-- ============ MAIN CONTENT ============ -->
   <main class="app-main">
 
-    <!-- ======= EXPORT PANEL ======= -->
-    <section id="panel-export" class="panel is-active" role="tabpanel" aria-label="Export extensions">
+    <!-- ======= SEARCH PANEL ======= -->
+    <section id="panel-search" class="panel is-active" role="tabpanel" aria-label="Search extensions">
+
+      <!-- Chrome Web Store online search -->
+      <div class="store-search">
+        <div class="panel-toolbar">
+          <div class="search-wrap">
+            <input
+              type="search"
+              id="store-search-input"
+              class="neon-input"
+              placeholder="Search the Chrome Web Store…"
+              autocomplete="off"
+              aria-label="Search the Chrome Web Store"
+              spellcheck="false"
+            >
+          </div>
+          <button id="store-search-btn" class="btn-neon" type="button">Search</button>
+        </div>
+        <p id="store-search-status" class="store-status" role="status" aria-live="polite"></p>
+        <div id="store-search-loading" class="grid-loading is-hidden" role="status" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Searching the store…</span>
+        </div>
+        <div id="store-results" class="store-results" aria-live="polite"></div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Installed extensions filter -->
       <div class="panel-toolbar">
         <div class="search-wrap">
           <input
@@ -51,7 +85,23 @@
           >
           <button id="search-clear-btn" class="search-clear is-hidden" type="button" aria-label="Clear search">×</button>
         </div>
-        <button id="export-all-btn" class="btn-neon" type="button">Export All</button>
+      </div>
+
+      <div class="filter-bar" id="filter-bar" aria-label="Extension filters">
+        <div class="filter-field">
+          <label class="filter-label" for="publisher-filter">Éditeur</label>
+          <select id="publisher-filter" class="neon-select" aria-label="Filter by publisher">
+            <option value="">All publishers</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label class="filter-label" for="rating-sort">Notes</label>
+          <select id="rating-sort" class="neon-select" aria-label="Sort by rating">
+            <option value="">Default</option>
+            <option value="rated">Top rated</option>
+          </select>
+        </div>
+        <button id="filter-reset-btn" class="link-btn is-hidden" type="button">Reset</button>
       </div>
 
       <div class="list-meta" id="list-meta" aria-live="polite">
@@ -72,6 +122,21 @@
       </div>
 
       <div id="extension-grid" class="extension-grid" aria-live="polite"></div>
+    </section>
+
+    <!-- ======= EXPORT PANEL ======= -->
+    <section id="panel-export" class="panel" role="tabpanel" aria-label="Export extensions" hidden>
+      <div class="panel-toolbar">
+        <p class="panel-subtitle">All installed extensions — Export All saves a full backup.</p>
+        <button id="export-all-btn" class="btn-neon" type="button">Export All</button>
+      </div>
+
+      <div id="export-grid-loading" class="grid-loading is-hidden" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Loading extensions…</span>
+      </div>
+
+      <div id="export-grid" class="extension-grid" aria-live="polite"></div>
     </section>
 
     <!-- ======= IMPORT PANEL ======= -->
@@ -109,8 +174,8 @@
       </div>
     </section>
 
-    <!-- ======= SETTINGS / CLOUD SYNC PANEL ======= -->
-    <section id="panel-settings" class="panel" role="tabpanel" aria-label="Synchronization settings" hidden>
+    <!-- ======= SYNC PANEL ======= -->
+    <section id="panel-sync" class="panel" role="tabpanel" aria-label="Synchronization settings" hidden>
       <div class="settings-group">
         <h2 class="panel-title">Cloud Profile Sync</h2>
         <p class="panel-subtitle">Serialized payloads are saved to <code>chrome.storage.sync</code> and automatically propagate to every browser signed into your account.</p>
@@ -124,6 +189,13 @@
         </div>
       </div>
 
+      <div class="settings-footnote">
+        Note: <code>chrome.storage.sync</code> is capped at ~100&nbsp;KB; for very large extension sets the compact JSON is truncated to fit.
+      </div>
+    </section>
+
+    <!-- ======= CONFIGURATION PANEL ======= -->
+    <section id="panel-config" class="panel" role="tabpanel" aria-label="Configuration" hidden>
       <div class="settings-group">
         <h2 class="panel-title">Custom Endpoint Sync</h2>
         <p class="panel-subtitle">Hook up an external database webhook or custom REST API. Payloads are POSTed as JSON on every refresh.</p>
@@ -143,8 +215,23 @@
         <p id="endpoint-status" class="endpoint-status" role="status" aria-live="polite"></p>
       </div>
 
-      <div class="settings-footnote">
-        Note: <code>chrome.storage.sync</code> is capped at ~100&nbsp;KB; for very large extension sets the compact JSON is truncated to fit.
+      <div class="settings-group">
+        <h2 class="panel-title">Web Store Proxy (metadata)</h2>
+        <p class="panel-subtitle">To show publisher &amp; ratings, the Chrome Web Store must be fetched through a CORS proxy (its own pages block direct access). Leave empty to disable this feature.</p>
+
+        <div class="endpoint-form">
+          <label for="store-proxy-input" class="sr-only">Store proxy URL</label>
+          <input
+            type="url"
+            id="store-proxy-input"
+            class="neon-input neon-underline"
+            placeholder="https://your-proxy.example.com/cors?url="
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="save-store-proxy-btn" class="btn-outline" type="button">Save</button>
+        </div>
+        <p id="store-proxy-status" class="endpoint-status" role="status" aria-live="polite"></p>
       </div>
     </section>
 

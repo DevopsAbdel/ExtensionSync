@@ -21,25 +21,39 @@ const dom = {
   tabBar: document.querySelector('.tab-bar'),
 
   // Panels
+  panelSearch: document.getElementById('panel-search'),
   panelExport: document.getElementById('panel-export'),
   panelImport: document.getElementById('panel-import'),
-  panelSettings: document.getElementById('panel-settings'),
+  panelSync: document.getElementById('panel-sync'),
+  panelConfig: document.getElementById('panel-config'),
 
-  // Export
+  // Search / Export grids
   searchInput: document.getElementById('search-input'),
   searchClearBtn: document.getElementById('search-clear-btn'),
   exportAllBtn: document.getElementById('export-all-btn'),
   exportSelectedBtn: document.getElementById('export-selected-btn'),
   clearSelectionBtn: document.getElementById('clear-selection-btn'),
   extensionGrid: document.getElementById('extension-grid'),
+  exportGrid: document.getElementById('export-grid'),
   gridLoading: document.getElementById('grid-loading'),
+  exportGridLoading: document.getElementById('export-grid-loading'),
   listMeta: document.getElementById('list-meta'),
   extensionCount: document.getElementById('extension-count'),
   stateSummary: document.getElementById('state-summary'),
   selectAllBtn: document.getElementById('select-all-btn'),
+  publisherFilter: document.getElementById('publisher-filter'),
+  ratingSort: document.getElementById('rating-sort'),
+  filterResetBtn: document.getElementById('filter-reset-btn'),
   selectionBar: document.getElementById('selection-bar'),
   selectionCount: document.getElementById('selection-count'),
   toast: document.getElementById('toast'),
+
+  // Chrome Web Store online search
+  storeSearchInput: document.getElementById('store-search-input'),
+  storeSearchBtn: document.getElementById('store-search-btn'),
+  storeSearchStatus: document.getElementById('store-search-status'),
+  storeSearchLoading: document.getElementById('store-search-loading'),
+  storeResults: document.getElementById('store-results'),
 
   // Import
   dropzone: document.getElementById('dropzone'),
@@ -57,7 +71,10 @@ const dom = {
   forceSyncBtn: document.getElementById('force-sync-btn'),
   endpointInput: document.getElementById('endpoint-input'),
   saveEndpointBtn: document.getElementById('save-endpoint-btn'),
-  endpointStatus: document.getElementById('endpoint-status')
+  endpointStatus: document.getElementById('endpoint-status'),
+  storeProxyInput: document.getElementById('store-proxy-input'),
+  saveStoreProxyBtn: document.getElementById('save-store-proxy-btn'),
+  storeProxyStatus: document.getElementById('store-proxy-status')
 };
 
 /* --------------------------------------------------------------------------
@@ -66,7 +83,9 @@ const dom = {
 const state = {
   extensions: [],     // live list of installed extensions (export view)
   selected: new Set(), // ids checked for import launch
-  filter: ''
+  filter: '',         // free-text name/id search
+  publisher: '',      // publisher filter value
+  sort: ''            // rating sort mode: '' | 'rated'
 };
 
 /* --------------------------------------------------------------------------
@@ -179,15 +198,19 @@ function activateTab(tabName) {
   });
 
   // Toggle panels.
+  dom.panelSearch.hidden = tabName !== 'search';
   dom.panelExport.hidden = tabName !== 'export';
   dom.panelImport.hidden = tabName !== 'import';
-  dom.panelSettings.hidden = tabName !== 'settings';
+  dom.panelSync.hidden = tabName !== 'sync';
+  dom.panelConfig.hidden = tabName !== 'config';
 
   // Load per-panel data when switching tabs.
-  if (tabName === 'export') {
+  if (tabName === 'search' || tabName === 'export') {
     loadExtensions();
-  } else if (tabName === 'settings') {
+  } else if (tabName === 'sync') {
     loadSettingsView();
+  } else if (tabName === 'config') {
+    loadConfigView();
   }
 }
 
@@ -208,7 +231,9 @@ dom.tabBar.addEventListener('click', (e) => {
 async function loadExtensions() {
   setSyncStatus('pending');
   dom.gridLoading.classList.remove('is-hidden');
+  dom.exportGridLoading.classList.remove('is-hidden');
   dom.extensionGrid.innerHTML = '';
+  dom.exportGrid.innerHTML = '';
   try {
     // The popup has the management permission, so enumerate live extensions
     // DIRECTLY. Never trust a possibly-empty persisted payload — the payload
@@ -225,11 +250,19 @@ async function loadExtensions() {
         enabled: ext.enabled,
         mayDisable: ext.mayDisable,
         installType: ext.installType || 'unknown',
-        webStoreUrl: `https://chromewebstore.google.com/detail/-/${ext.id}`
+        webStoreUrl: `https://chromewebstore.google.com/detail/-/${ext.id}`,
+        author: null,      // filled in from Chrome Web Store below
+        rating: null,
+        numRatings: null,
+        users: null
       }));
 
+    // Enrich with Web Store metadata (publisher/rating/users) when available.
+    await enrichWithStoreMeta();
+
     setSyncStatus('synced');
-    renderExportGrid();
+    renderSearchGrid();
+    renderExportList();
 
     // Opportunistically refresh the background payload so cloud sync is up
     // to date; failures here must not break the grid we already rendered.
@@ -250,18 +283,68 @@ async function loadExtensions() {
     } catch {
       /* background unreachable */
     }
-    renderExportGrid();
+    renderSearchGrid();
+    renderExportList();
   }
 }
 
-/** Re-renders the export grid honoring the current search filter. */
-function renderExportGrid() {
+/**
+ * Fetches Chrome Web Store metadata (publisher, rating, users) via the
+ * background worker and merges it into the in-memory extension records.
+ * Runs after enumeration; failures degrade to null meta fields.
+ */
+async function enrichWithStoreMeta() {
+  try {
+    const ids = state.extensions.map((e) => e.id);
+    if (ids.length === 0) return;
+    const res = await sendToBackground({ type: 'GET_STORE_META', ids });
+    if (!res?.ok || !res.metas) return;
+    for (const ext of state.extensions) {
+      const meta = res.metas[ext.id];
+      if (meta) {
+        ext.author = meta.author || null;
+        ext.rating = meta.rating ?? null;
+        ext.numRatings = meta.numRatings ?? null;
+        ext.users = meta.users ?? null;
+      }
+    }
+  } catch {
+    /* store meta is best-effort */
+  }
+}
+
+/** Repopulates the publisher dropdown from the current extension set. */
+function buildPublisherOptions() {
+  const authors = new Set(
+    state.extensions.map((e) => e.author).filter(Boolean)
+  );
+  const current = state.publisher;
+  const sorted = [...authors].sort((a, b) => a.localeCompare(b));
+  dom.publisherFilter.innerHTML =
+    '<option value="">All publishers</option>' +
+    sorted.map((a) => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+  dom.publisherFilter.value = authors.has(current) ? current : '';
+  if (dom.publisherFilter.value !== current) state.publisher = dom.publisherFilter.value;
+}
+
+/** Re-renders the Search grid honoring the current search + filters. */
+function renderSearchGrid() {
   dom.gridLoading.classList.add('is-hidden');
   const filter = state.filter.trim().toLowerCase();
+  const pub = state.publisher;
 
-  const visible = state.extensions.filter((ext) =>
-    !filter || ext.name.toLowerCase().includes(filter) || ext.id.includes(filter)
+  let visible = state.extensions.filter((ext) =>
+    (!filter || ext.name.toLowerCase().includes(filter) || ext.id.includes(filter)) &&
+    (!pub || ext.author === pub)
   );
+
+  // Optional rating sort: best-rated first.
+  if (state.sort === 'rated') {
+    visible = [...visible].sort((a, b) => {
+      const ra = a.rating ?? -1, rb = b.rating ?? -1;
+      return rb - ra;
+    });
+  }
 
   dom.extensionCount.textContent = `${state.extensions.length} extension${state.extensions.length === 1 ? '' : 's'}`;
 
@@ -283,9 +366,10 @@ function renderExportGrid() {
   }
 
   if (visible.length === 0) {
+    const filtered = Boolean(state.filter.trim()) || Boolean(state.publisher) || Boolean(state.sort);
     dom.extensionGrid.innerHTML = renderEmptyState(
-      `No matches for “${escapeHtml(state.filter.trim())}”`,
-      'Try a different name or extension ID.',
+      filtered ? 'No matches for current filters' : 'No extensions to show',
+      'Try a different name, extension ID, or clear the filters.',
       'clear'
     );
     dom.selectAllBtn.textContent = 'Select all';
@@ -298,11 +382,40 @@ function renderExportGrid() {
     .map((ext) => renderExtensionCard(ext))
     .join('');
 
+  // Keep the publisher dropdown in sync with what we actually have.
+  buildPublisherOptions();
+
+  // Toggle the reset control when any filter is active.
+  const filtering = Boolean(state.filter.trim()) || Boolean(state.publisher) || Boolean(state.sort);
+  dom.filterResetBtn.classList.toggle('is-hidden', !filtering);
+
   // Determine select-all state.
+  updateSelectAllState(visible);
+  updateSelectionBar();
+}
+
+/** Re-renders the Export list — always the full, unfiltered extension set. */
+function renderExportList() {
+  dom.exportGridLoading.classList.add('is-hidden');
+  if (state.extensions.length === 0) {
+    dom.exportGrid.innerHTML = renderEmptyState(
+      'No extensions found',
+      'ExtensionSync could not enumerate your installed extensions.',
+      'refresh'
+    );
+    return;
+  }
+  dom.exportGrid.innerHTML = state.extensions
+    .map((ext) => renderExtensionCard(ext))
+    .join('');
+  updateSelectionBar();
+}
+
+/** Syncs the select-all button label to the given (already-filtered) list. */
+function updateSelectAllState(visible) {
   const allVisibleSelected = visible.length > 0 && visible.every((ext) => state.selected.has(ext.id));
   dom.selectAllBtn.textContent = allVisibleSelected ? 'Deselect all' : 'Select all';
   dom.selectAllBtn.dataset.state = allVisibleSelected ? 'all' : (state.selected.size > 0 ? 'some' : 'none');
-  updateSelectionBar();
 }
 
 /** Toggles the sticky selection action bar based on the current selection. */
@@ -338,6 +451,27 @@ function renderEmptyState(title, hint, action) {
  * the bulk "Export Selected" action as well as the individual enable/disable
  * toggle.
  */
+/** Formats a user count compactly, e.g. 1_800_000 -> "1.8M". */
+function formatUsers(n) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+  return String(n);
+}
+
+/** Renders the Web Store meta line (publisher · rating · users), if any. */
+function renderStoreMetaLine(ext) {
+  const parts = [];
+  if (ext.author) parts.push(escapeHtml(ext.author));
+  if (typeof ext.rating === 'number') {
+    parts.push(`<span class="rating">★ ${ext.rating.toFixed(1)}${ext.numRatings ? ` (${formatUsers(ext.numRatings)})` : ''}</span>`);
+  } else if (ext.users) {
+    parts.push(`<span>${escapeHtml(formatUsers(ext.users))} users</span>`);
+  }
+  if (parts.length === 0) return '';
+  return `<div class="ext-store" title="${escapeHtml(ext.author || 'Web Store data')}">${parts.join(' · ')}</div>`;
+}
+
 function renderExtensionCard(ext) {
   const isSelected = state.selected.has(ext.id);
   const initials = (ext.name || '?').slice(0, 2).toUpperCase();
@@ -357,6 +491,7 @@ function renderExtensionCard(ext) {
       <div class="ext-info">
         <div class="ext-name" title="${escapeHtml(ext.name)}">${escapeHtml(ext.name)}</div>
         <div class="ext-sub" title="${escapeHtml(ext.id)}">v${escapeHtml(ext.version)} · ${escapeHtml(shortId(ext.id))}</div>
+        ${renderStoreMetaLine(ext)}
       </div>
       <span class="ext-status ${ext.enabled ? 'is-enabled' : 'is-disabled'}">
         ${ext.enabled ? 'ON' : 'OFF'}
@@ -378,7 +513,7 @@ function renderExtensionCard(ext) {
 dom.searchInput.addEventListener('input', (e) => {
   state.filter = e.target.value;
   dom.searchClearBtn.classList.toggle('is-hidden', !state.filter);
-  renderExportGrid();
+  renderSearchGrid();
 });
 
 /** Clear the search filter. */
@@ -386,12 +521,37 @@ function clearSearch() {
   state.filter = '';
   dom.searchInput.value = '';
   dom.searchClearBtn.classList.add('is-hidden');
-  renderExportGrid();
+  renderSearchGrid();
 }
 dom.searchClearBtn.addEventListener('click', clearSearch);
 
-/** Per-card selection from the grid. */
-dom.extensionGrid.addEventListener('change', (e) => {
+/** Publisher dropdown filter. */
+dom.publisherFilter.addEventListener('change', (e) => {
+  state.publisher = e.target.value;
+  renderSearchGrid();
+});
+
+/** Rating sort dropdown. */
+dom.ratingSort.addEventListener('change', (e) => {
+  state.sort = e.target.value;
+  renderSearchGrid();
+});
+
+/** Reset search + all filters to defaults. */
+function resetFilters() {
+  state.filter = '';
+  state.publisher = '';
+  state.sort = '';
+  dom.searchInput.value = '';
+  dom.searchClearBtn.classList.add('is-hidden');
+  dom.publisherFilter.value = '';
+  dom.ratingSort.value = '';
+  renderSearchGrid();
+}
+dom.filterResetBtn.addEventListener('click', resetFilters);
+
+/** Per-card selection/toggle from any grid (Search or Export). */
+function handleGridChange(e) {
   const selectInput = e.target.closest('input[data-action="select-exp"]');
   if (selectInput) {
     if (selectInput.checked) {
@@ -399,7 +559,8 @@ dom.extensionGrid.addEventListener('change', (e) => {
     } else {
       state.selected.delete(selectInput.dataset.id);
     }
-    renderExportGrid();
+    renderSearchGrid();
+    renderExportList();
     return;
   }
 
@@ -415,13 +576,19 @@ dom.extensionGrid.addEventListener('change', (e) => {
     toggleInput.checked = !toggleInput.checked; // rollback toggle on failure
     showCallout(`Could not ${toggleInput.checked ? 'enable' : 'disable'} ${ext.name}`, 'error');
   });
-});
+}
+
+dom.extensionGrid.addEventListener('change', handleGridChange);
+dom.exportGrid.addEventListener('change', handleGridChange);
 
 /** Actions rendered inside the empty-state (clear search / try again). */
-dom.extensionGrid.addEventListener('click', (e) => {
-  if (e.target.closest('#empty-clear-btn')) clearSearch();
+function handleGridClick(e) {
+  if (e.target.closest('#empty-clear-btn')) resetFilters();
   if (e.target.closest('#empty-refresh-btn')) loadExtensions();
-});
+}
+
+dom.extensionGrid.addEventListener('click', handleGridClick);
+dom.exportGrid.addEventListener('click', handleGridClick);
 
 /** "Select all / Deselect" for bulk export. */
 dom.selectAllBtn.addEventListener('click', () => {
@@ -437,13 +604,15 @@ dom.selectAllBtn.addEventListener('click', () => {
   } else {
     visible.forEach((ext) => state.selected.add(ext.id));
   }
-  renderExportGrid();
+  renderSearchGrid();
+  renderExportList();
 });
 
 /** Clear the current selection. */
 dom.clearSelectionBtn.addEventListener('click', () => {
   state.selected.clear();
-  renderExportGrid();
+  renderSearchGrid();
+  renderExportList();
 });
 
 /* --------------------------------------------------------------------------
@@ -790,7 +959,7 @@ async function initializeSyncLaunch() {
 dom.initializeSyncBtn.addEventListener('click', initializeSyncLaunch);
 
 /* --------------------------------------------------------------------------
- * SETTINGS — cloud & custom endpoint sync
+ * SYNC & CONFIGURATION
  * ------------------------------------------------------------------------ */
 
 async function loadSettingsView() {
@@ -798,11 +967,20 @@ async function loadSettingsView() {
   const { extensionsync_last_sync_at: lastSyncAt = null } =
     await chrome.storage.local.get('extensionsync_last_sync_at');
   dom.lastSyncTime.textContent = formatTime(lastSyncAt);
+}
 
+/** Loads Configuration panel values (custom endpoint + store proxy). */
+async function loadConfigView() {
   // Custom endpoint URL.
   const res = await sendToBackground({ type: 'GET_CUSTOM_ENDPOINT' });
   if (res?.ok) {
     dom.endpointInput.value = res.endpoint || '';
+  }
+
+  // Web Store CORS proxy URL.
+  const sres = await sendToBackground({ type: 'GET_STORE_PROXY' });
+  if (sres?.ok) {
+    dom.storeProxyInput.value = sres.proxy || '';
   }
 }
 
@@ -853,10 +1031,104 @@ dom.endpointInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') saveEndpoint();
 });
 
+/** Save the Web Store metadata proxy URL (validated to be HTTPS). */
+async function saveStoreProxy() {
+  const url = dom.storeProxyInput.value.trim();
+
+  if (url && !/^https:\/\//i.test(url)) {
+    dom.storeProxyStatus.textContent = 'Proxy must be an HTTPS URL.';
+    dom.storeProxyStatus.className = 'endpoint-status is-error';
+    return;
+  }
+
+  const res = await sendToBackground({ type: 'SET_STORE_PROXY', url });
+  if (res?.ok) {
+    dom.storeProxyStatus.textContent = url
+      ? 'Proxy saved. Reload extensions to fetch publisher & ratings.'
+      : 'Proxy cleared. Store metadata disabled.';
+    dom.storeProxyStatus.className = 'endpoint-status is-success';
+    loadExtensions();
+  } else {
+    dom.storeProxyStatus.textContent = 'Failed to save proxy.';
+    dom.storeProxyStatus.className = 'endpoint-status is-error';
+  }
+}
+
+dom.saveStoreProxyBtn.addEventListener('click', saveStoreProxy);
+dom.storeProxyInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') saveStoreProxy();
+});
+
+/* --------------------------------------------------------------------------
+ * CHROME WEB STORE ONLINE SEARCH
+ * ------------------------------------------------------------------------ */
+
+/** Runs an online store search for the given query and renders the results. */
+async function runStoreSearch(query) {
+  const q = (query ?? '').trim();
+  dom.storeResults.innerHTML = '';
+  dom.storeSearchStatus.textContent = '';
+  dom.storeSearchStatus.classList.remove('is-error');
+  if (!q) return;
+
+  dom.storeSearchLoading.classList.remove('is-hidden');
+  try {
+    const res = await sendToBackground({ type: 'GET_STORE_SEARCH', query: q });
+    if (!res || res.ok === false) throw new Error('search failed');
+    dom.storeSearchLoading.classList.add('is-hidden');
+
+    if (res.configured === false) {
+      dom.storeSearchStatus.textContent =
+        'Store search is disabled. Set a Web Store proxy in Configuration → Web Store Proxy.';
+      dom.storeSearchStatus.classList.add('is-error');
+      return;
+    }
+    if (!res.results.length) {
+      dom.storeResults.innerHTML =
+        '<div class="store-card-empty">No extensions found on the Chrome Web Store.</div>';
+      return;
+    }
+    renderStoreResults(res.results);
+  } catch {
+    dom.storeSearchLoading.classList.add('is-hidden');
+    dom.storeSearchStatus.textContent =
+      'Search failed. Check the Web Store proxy in Configuration.';
+    dom.storeSearchStatus.classList.add('is-error');
+  }
+}
+
+/** Renders online store result cards. */
+function renderStoreResults(results) {
+  dom.storeResults.innerHTML = results.map((r) => {
+    const meta = renderStoreMetaLine(r);
+    const desc = r.description ? escapeHtml(r.description) : '';
+    const icon = r.icon
+      ? `<img class="store-card-icon" src="${escapeHtml(r.icon)}" alt="" loading="lazy">`
+      : '<div class="store-card-icon"></div>';
+    return `
+      <a class="store-card" href="${escapeHtml(`https://chromewebstore.google.com/detail/${r.id}`)}"
+         target="_blank" rel="noopener noreferrer">
+        ${icon}
+        <div class="store-card-body">
+          <span class="store-card-name">${escapeHtml(r.name)}</span>
+          ${meta}
+          ${desc ? `<div class="store-card-desc">${desc}</div>` : ''}
+        </div>
+      </a>`;
+  }).join('');
+}
+
 /* --------------------------------------------------------------------------
  * INITIALISATION
  * ------------------------------------------------------------------------ */
 document.addEventListener('DOMContentLoaded', () => {
-  activateTab('export');      // default tab
-  loadExtensions();           // render export grid
+  activateTab('search');      // default tab
+
+  // Wire the online store search.
+  dom.storeSearchBtn.addEventListener('click', () => runStoreSearch(dom.storeSearchInput.value));
+  dom.storeSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') runStoreSearch(dom.storeSearchInput.value);
+  });
+
+  loadExtensions();           // render search & export grids
 });
