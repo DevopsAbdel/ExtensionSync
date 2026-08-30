@@ -1226,7 +1226,6 @@ dom.storeSelectAll.addEventListener('change', () => {
   renderStoreResults();
 });
 
-/** Opens the Chrome Web Store install page for every selected result. */
 /**
  * "Install Selected" exports the chosen store IDs to a JSON file in the
  * Downloads folder. The user then runs tools/install-extensions.cmd once,
