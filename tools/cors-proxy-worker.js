@@ -29,6 +29,15 @@
 const TARGET_ORIGIN = 'https://chromewebstore.google.com';
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB cap on fetched pages
 
+// Only proxy the Chrome Web Store's detail *and* search pages, so this relay
+// cannot be abused as a generic scraping endpoint.
+function isAllowedTarget(target) {
+  return (
+    target.startsWith(TARGET_ORIGIN + '/detail/') ||
+    target.startsWith(TARGET_ORIGIN + '/search/')
+  );
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -48,7 +57,7 @@ export default {
     const { searchParams } = new URL(request.url);
     const target = searchParams.get('url');
 
-    if (!target || !target.startsWith(TARGET_ORIGIN + '/detail/')) {
+    if (!target || !isAllowedTarget(target)) {
       return new Response('Missing or disallowed url', {
         status: 400,
         headers: CORS_HEADERS

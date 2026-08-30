@@ -11,6 +11,9 @@
  *     http://localhost:8123/cors?url=
  * (or the corresponding public URL if you expose it). Chrome's Web Store is
  * HTTPS, so an HTTP localhost proxy is fine for local use.
+ *
+ * Accepted targets are Chrome Web Store detail pages (/detail/<id>) and
+ * search pages (/search/<query>) — the two page types ExtensionSync reads.
  */
 
 const http = require('http');
@@ -19,6 +22,15 @@ const https = require('https');
 const TARGET_ORIGIN = 'https://chromewebstore.google.com';
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB cap
 const PORT = Number(process.argv[2]) || 8123;
+
+// Only proxy the Chrome Web Store's detail *and* search pages, so this relay
+// cannot be abused as a generic scraping endpoint.
+function isAllowedTarget(target) {
+  return (
+    target.startsWith(TARGET_ORIGIN + '/detail/') ||
+    target.startsWith(TARGET_ORIGIN + '/search/')
+  );
+}
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -60,7 +72,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   const target = u.searchParams.get('url');
-  if (!target || !target.startsWith(TARGET_ORIGIN + '/detail/')) {
+  if (!target || !isAllowedTarget(target)) {
     res.statusCode = 400;
     return res.end('Missing or disallowed url');
   }
