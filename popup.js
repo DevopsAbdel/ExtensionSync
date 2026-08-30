@@ -1,0 +1,598 @@
+/**
+ * ExtensionSync — Popup Controller
+ * =================================
+ * All UI orchestration lives here. The popup is recreated from scratch on
+ * every click of the toolbar icon, so:
+ *   - State is hydrated from chrome.storage on DOMContentLoaded.
+ *   - The service worker is the source of truth for the payload; the popup
+ *     either reads it from storage or sends a message to refresh it.
+ *
+ * MV3 note: no inline scripts allowed — everything is this file.
+ */
+
+/* --------------------------------------------------------------------------
+ * DOM REFERENCES
+ * ------------------------------------------------------------------------ */
+const dom = {
+  // Header
+  syncStatus: document.getElementById('sync-status'),
+
+  // Tabs
+  tabBar: document.querySelector('.tab-bar'),
+
+  // Panels
+  panelExport: document.getElementById('panel-export'),
+  panelImport: document.getElementById('panel-import'),
+  panelSettings: document.getElementById('panel-settings'),
+
+  // Export
+  searchInput: document.getElementById('search-input'),
+  exportAllBtn: document.getElementById('export-all-btn'),
+  extensionGrid: document.getElementById('extension-grid'),
+  listMeta: document.getElementById('list-meta'),
+  extensionCount: document.getElementById('extension-count'),
+  selectAllBtn: document.getElementById('select-all-btn'),
+  exportCallout: document.getElementById('export-callout'),
+
+  // Import
+  dropzone: document.getElementById('dropzone'),
+  importFile: document.getElementById('import-file'),
+  importDashboard: document.getElementById('import-dashboard'),
+  importSummary: document.getElementById('import-summary'),
+  importList: document.getElementById('import-list'),
+  initializeSyncBtn: document.getElementById('initialize-sync-btn'),
+  clearImportBtn: document.getElementById('clear-import-btn'),
+  launchProgress: document.getElementById('launch-progress'),
+  launchProgressText: document.getElementById('launch-progress-text'),
+
+  // Settings
+  lastSyncTime: document.getElementById('last-sync-time'),
+  forceSyncBtn: document.getElementById('force-sync-btn'),
+  endpointInput: document.getElementById('endpoint-input'),
+  saveEndpointBtn: document.getElementById('save-endpoint-btn'),
+  endpointStatus: document.getElementById('endpoint-status')
+};
+
+/* --------------------------------------------------------------------------
+ * POPUP STATE
+ * ------------------------------------------------------------------------ */
+const state = {
+  extensions: [],     // live list of installed extensions (export view)
+  selected: new Set(), // ids checked for import launch
+  filter: ''
+};
+
+/* --------------------------------------------------------------------------
+ * UTILITIES
+ * ------------------------------------------------------------------------ */
+
+/** Escapes a string for safe insertion into HTML text content. */
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = String(value ?? '');
+  return div.innerHTML;
+}
+
+/** Abbreviates an extension id for compact display. */
+function shortId(id) {
+  return id.length > 10 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id;
+}
+
+/** Formats an epoch timestamp into a human-readable string. */
+function formatTime(epoch) {
+  if (!epoch) return 'Never';
+  const d = new Date(epoch);
+  return d.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+/** Sets the header sync-status indicator. */
+function setSyncStatus(mode) {
+  dom.syncStatus.dataset.state = mode; // 'synced' | 'pending' | 'error' | 'idle'
+}
+
+/** Shows a transient toast-style callout. */
+function showCallout(message, type = 'success', autoHide = true) {
+  dom.exportCallout.textContent = message;
+  dom.exportCallout.className = `callout is-${type}`;
+  if (autoHide) {
+    clearTimeout(showCallout._t);
+    showCallout._t = setTimeout(() => {
+      dom.exportCallout.classList.add('is-hidden');
+    }, 2600);
+  }
+}
+
+/** Sends a message to the background service worker and returns its response. */
+async function sendToBackground(message) {
+  return chrome.runtime.sendMessage(message);
+}
+
+/* --------------------------------------------------------------------------
+ * TAB NAVIGATION
+ * ------------------------------------------------------------------------ */
+function activateTab(tabName) {
+  // Update button active state.
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    const isActive = btn.dataset.tab === tabName;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-selected', String(isActive));
+  });
+
+  // Toggle panels.
+  dom.panelExport.hidden = tabName !== 'export';
+  dom.panelImport.hidden = tabName !== 'import';
+  dom.panelSettings.hidden = tabName !== 'settings';
+
+  // Load per-panel data when switching tabs.
+  if (tabName === 'export') {
+    loadExtensions();
+  } else if (tabName === 'settings') {
+    loadSettingsView();
+  }
+}
+
+dom.tabBar.addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab-btn');
+  if (btn) activateTab(btn.dataset.tab);
+});
+
+/* --------------------------------------------------------------------------
+ * EXPORT — load & render installed extensions
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Reads the current sync payload from the background worker (which already
+ * persists it to chrome.storage.sync). Falls back to storage if the worker
+ * is unresponsive.
+ */
+async function loadExtensions() {
+  setSyncStatus('pending');
+  try {
+    const res = await Promise.race([
+      sendToBackground({ type: 'GET_PAYLOAD' }),
+      new Promise((resolve) => setTimeout(() => resolve(null), 2500))
+    ]);
+
+    if (res && res.ok && Array.isArray(res.payload)) {
+      state.extensions = res.payload;
+    } else {
+      // Worker asleep/unreachable — read directly from sync storage.
+      const { extensionsync_payload: cached = [] } =
+        await chrome.storage.sync.get('extensionsync_payload');
+      state.extensions = cached;
+    }
+    setSyncStatus('synced');
+    renderExportGrid();
+  } catch (error) {
+    setSyncStatus('error');
+    renderExportGrid();
+  }
+}
+
+/** Re-renders the export grid honoring the current search filter. */
+function renderExportGrid() {
+  const filter = state.filter.trim().toLowerCase();
+
+  const visible = state.extensions.filter((ext) =>
+    !filter || ext.name.toLowerCase().includes(filter) || ext.id.includes(filter)
+  );
+
+  dom.extensionCount.textContent = `${state.extensions.length} extension${state.extensions.length === 1 ? '' : 's'}`;
+
+  if (state.extensions.length === 0) {
+    dom.extensionGrid.innerHTML = renderEmptyState(
+      'No extensions found',
+      'ExtensionSync could not enumerate your installed extensions.'
+    );
+    dom.selectAllBtn.textContent = 'Select all';
+    dom.selectAllBtn.dataset.state = 'none';
+    return;
+  }
+
+  dom.extensionGrid.innerHTML = visible
+    .map((ext) => renderExtensionCard(ext))
+    .join('');
+
+  // Determine select-all state.
+  const allVisibleSelected = visible.length > 0 && visible.every((ext) => state.selected.has(ext.id));
+  dom.selectAllBtn.textContent = allVisibleSelected ? 'Deselect all' : 'Select all';
+  dom.selectAllBtn.dataset.state = allVisibleSelected ? 'all' : (state.selected.size > 0 ? 'some' : 'none');
+}
+
+function renderEmptyState(title, hint) {
+  return `
+    <div class="empty-state">
+      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
+      </svg>
+      <p>${escapeHtml(title)}</p>
+      <p class="empty-hint">${escapeHtml(hint)}</p>
+    </div>`;
+}
+
+/**
+ * Renders a single extension card. Selection is used by the export flow
+ * (toggle enable/disable per selected item on the Web Store launch).
+ */
+function renderExtensionCard(ext) {
+  const isSelected = state.selected.has(ext.id);
+  const initials = (ext.name || '?').slice(0, 2).toUpperCase();
+
+  return `
+    <article class="ext-card" data-id="${escapeHtml(ext.id)}">
+      <div class="ext-icon">${escapeHtml(initials)}</div>
+      <div class="ext-info">
+        <div class="ext-name" title="${escapeHtml(ext.name)}">${escapeHtml(ext.name)}</div>
+        <div class="ext-sub" title="${escapeHtml(ext.id)}">v${escapeHtml(ext.version)} · ${escapeHtml(shortId(ext.id))}</div>
+      </div>
+      <span class="ext-status ${ext.enabled ? 'is-enabled' : 'is-disabled'}">
+        ${ext.enabled ? 'ON' : 'OFF'}
+      </span>
+      <label class="toggle" title="${ext.enabled ? 'Disable extension' : 'Enable extension'}">
+        <input
+          type="checkbox"
+          data-action="toggle-exp"
+          data-id="${escapeHtml(ext.id)}"
+          ${ext.enabled ? 'checked' : ''}
+          ${ext.mayDisable === false ? 'disabled' : ''}
+        >
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </article>`;
+}
+
+/** Search filter input. */
+dom.searchInput.addEventListener('input', (e) => {
+  state.filter = e.target.value;
+  renderExportGrid();
+});
+
+/** Selection toggle from the grid (re-render to sync toggle states). */
+dom.extensionGrid.addEventListener('change', (e) => {
+  const input = e.target.closest('input[data-action="toggle-exp"]');
+  if (!input) return;
+
+  const ext = state.extensions.find((x) => x.id === input.dataset.id);
+  if (!ext) return;
+
+  // chrome.management.setEnabled requires a user gesture; the change event
+  // qualifies. May show a native confirmation dialog for disabledExtension.
+  chrome.management.setEnabled(ext.id, input.checked).catch((err) => {
+    input.checked = !input.checked; // rollback toggle on failure
+    showCallout(`Could not ${input.checked ? 'enable' : 'disable'} ${ext.name}`, 'error');
+  });
+});
+
+/** "Select all / Deselect" for bulk export. */
+dom.selectAllBtn.addEventListener('click', () => {
+  const filter = state.filter.trim().toLowerCase();
+  const visible = state.extensions.filter((ext) =>
+    !filter || ext.name.toLowerCase().includes(filter) || ext.id.includes(filter)
+  );
+
+  const allSelected = visible.length > 0 && visible.every((ext) => state.selected.has(ext.id));
+
+  if (allSelected) {
+    visible.forEach((ext) => state.selected.delete(ext.id));
+  } else {
+    visible.forEach((ext) => state.selected.add(ext.id));
+  }
+  renderExportGrid();
+});
+
+/* --------------------------------------------------------------------------
+ * EXPORT — serialize & download backup
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Builds the backup JSON blob and saves it via the downloads API as
+ * extensionsync-backup.json.
+ *
+ * Note: chrome.downloads.download can write a data: URL blob directly from
+ * the popup context without needing any file-system permission.
+ */
+async function exportAll() {
+  dom.exportAllBtn.disabled = true;
+  setSyncStatus('pending');
+  try {
+    // Enumerate ALL extensions, not just those in the synced payload, so the
+    // export is authoritative. We fuse with any cached records to preserve
+    // the Web Store URL derivation.
+    const all = await chrome.management.getAll();
+    const selfId = chrome.runtime.id;
+
+    const records = all
+      .filter((ext) => ext.id !== selfId && ext.type === 'extension')
+      .map((ext) => ({
+        name: ext.name,
+        id: ext.id,
+        version: ext.version,
+        enabled: ext.enabled,
+        installType: ext.installType || 'unknown',
+        webStoreUrl: `https://chromewebstore.google.com/detail/-/${ext.id}`
+      }));
+
+    // Serialize to a minified JSON blob (no pretty-print → compact payload).
+    const json = JSON.stringify({ schemaVersion: 1, exportedAt: new Date().toISOString(), extensions: records });
+    const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
+
+    await chrome.downloads.download({
+      url: dataUrl,
+      filename: 'extensionsync-backup.json',
+      saveAs: true
+    });
+
+    showCallout(`Exported ${records.length} extension${records.length === 1 ? '' : 's'}`);
+  } catch (error) {
+    setSyncStatus('error');
+    showCallout('Export failed. See console for details.', 'error');
+    console.error('[ExtensionSync] export failed:', error);
+  } finally {
+    dom.exportAllBtn.disabled = false;
+    setSyncStatus('synced');
+  }
+}
+
+dom.exportAllBtn.addEventListener('click', exportAll);
+
+/* --------------------------------------------------------------------------
+ * IMPORT — backup file upload & interactive wizard
+ * ------------------------------------------------------------------------ */
+
+/** Handles both drag-drop and the hidden file input. */
+function handleImportFile(file) {
+  if (!file) return;
+  if (!/\.json$/i.test(file.name) && file.type !== 'application/json') {
+    showCallout('Please select a JSON backup file', 'error');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      const extensions = Array.isArray(parsed?.extensions) ? parsed.extensions : [];
+
+      // Validate each record minimally.
+      const valid = extensions.filter(
+        (ext) => ext && typeof ext === 'object' && typeof ext.id === 'string'
+      );
+
+      if (valid.length === 0) {
+        showCallout('No valid extension records found in file', 'error');
+        return;
+      }
+
+      renderImportDashboard(valid);
+    } catch (err) {
+      showCallout('Invalid JSON backup file', 'error');
+      console.error('[ExtensionSync] import parse error:', err);
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* Dropzone click → open file picker. */
+dom.dropzone.addEventListener('click', () => dom.importFile.click());
+
+/* Drag & drop support. */
+['dragenter', 'dragover'].forEach((evt) => {
+  dom.dropzone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    dom.dropzone.classList.add('is-dragover');
+  });
+});
+['dragleave', 'drop'].forEach((evt) => {
+  dom.dropzone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    dom.dropzone.classList.remove('is-dragover');
+  });
+});
+dom.dropzone.addEventListener('drop', (e) => {
+  const file = e.dataTransfer?.files?.[0];
+  handleImportFile(file);
+});
+
+dom.importFile.addEventListener('change', (e) => {
+  handleImportFile(e.target.files?.[0]);
+  e.target.value = ''; // reset so re-selecting the same file re-triggers
+});
+
+/**
+ * Renders the import dashboard (checklist of extensions to install).
+ * Requires the "tabs" permission to detect already-installed extensions —
+ * we instead check against the current payload and mark matches as
+ * "Already installed".
+ */
+async function renderImportDashboard(extensions) {
+  dom.dropzone.classList.add('is-hidden');
+  dom.importDashboard.classList.remove('is-hidden');
+
+  let installed = [];
+  try {
+    const stored = await chrome.storage.sync.get('extensionsync_payload');
+    installed = stored.extensionsync_payload || [];
+  } catch {
+    // chrome.storage unavailable (e.g. running outside extension context);
+    // degrade to showing every item as needing installation.
+    installed = [];
+  }
+
+  const installedIds = new Set(installed.map((e) => e.id));
+  state.importData = extensions;
+
+  dom.importSummary.textContent =
+    `${extensions.length} extension${extensions.length === 1 ? '' : 's'} parsed from backup`;
+
+  dom.importList.innerHTML = extensions
+    .map((ext, idx) => {
+      const already = installedIds.has(ext.id);
+      const initials = (ext.name || '?').slice(0, 2).toUpperCase();
+      return `
+        <label class="import-item is-selected" data-index="${idx}">
+          <span class="checkbox">
+            <input type="checkbox" data-import-index="${idx}" ${already ? 'disabled' : ''} ${already ? '' : 'checked'}>
+            <span class="checkbox-box"></span>
+          </span>
+          <span class="ext-icon">${escapeHtml(initials)}</span>
+          <span class="ext-info">
+            <span class="ext-name">${escapeHtml(ext.name || 'Unknown')}</span>
+            <span class="ext-sub">v${escapeHtml(ext.version || '?')} · ${escapeHtml(shortId(ext.id))}</span>
+          </span>
+          ${already ? '<span class="already-installed">Installed</span>' : ''}
+        </label>`;
+    })
+    .join('');
+
+  syncImportSelectionUI();
+}
+
+function syncImportSelectionUI() {
+  const checkboxes = dom.importList.querySelectorAll('input[data-import-index]');
+  let count = 0;
+  checkboxes.forEach((cb) => {
+    if (cb.checked) count++;
+    cb.closest('.import-item').classList.toggle('is-selected', cb.checked && !cb.disabled);
+  });
+  dom.initializeSyncBtn.disabled = count === 0;
+  dom.initializeSyncBtn.textContent = count > 0
+    ? `Initialize Sync Launch (${count})`
+    : 'No extensions selected';
+}
+
+dom.importList.addEventListener('change', (e) => {
+  const cb = e.target.closest('input[data-import-index]');
+  if (cb) syncImportSelectionUI();
+});
+
+dom.clearImportBtn.addEventListener('click', () => {
+  dom.importDashboard.classList.add('is-hidden');
+  dom.dropzone.classList.remove('is-hidden');
+  dom.importList.innerHTML = '';
+  state.importData = [];
+});
+
+/* --------------------------------------------------------------------------
+ * IMPORT — "Initialize Sync Launch" sequential tab opener
+ *
+ * MV3 forbids silent background installation, so we open the Chrome Web
+ * Store pages in new tabs for each checked extension. Sequential creation
+ * with a small delay prevents the browser from throttling burst tab opens.
+ * ------------------------------------------------------------------------ */
+async function initializeSyncLaunch() {
+  const checkboxes = [...dom.importList.querySelectorAll('input[data-import-index]:checked')];
+
+  if (checkboxes.length === 0) return;
+
+  dom.initializeSyncBtn.disabled = true;
+  dom.launchProgress.classList.remove('is-hidden');
+  setSyncStatus('pending');
+
+  let opened = 0;
+  for (const cb of checkboxes) {
+    const index = Number(cb.dataset.importIndex);
+    const ext = state.importData?.[index];
+    if (!ext) continue;
+
+    dom.launchProgressText.textContent = `Opening ${ext.name || 'extension'}… (${opened + 1}/${checkboxes.length})`;
+
+    // Prefer a canonical web store URL if present in the backup; otherwise
+    // derive from the ID.
+    const url = (ext.webStoreUrl && /^https:\/\//i.test(ext.webStoreUrl))
+      ? ext.webStoreUrl
+      : `https://chromewebstore.google.com/detail/-/${ext.id}`;
+
+    try {
+      await chrome.tabs.create({ url });
+      opened++;
+    } catch (err) {
+      console.error('[ExtensionSync] failed to open tab:', err);
+    }
+
+    // 350ms pause between opens to avoid Chrome's rapid-open throttle.
+    await new Promise((r) => setTimeout(r, 350));
+  }
+
+  dom.launchProgress.classList.add('is-hidden');
+  dom.initializeSyncBtn.disabled = false;
+  setSyncStatus('synced');
+  showCallout(`Opened ${opened} web store page${opened === 1 ? '' : 's'}`);
+}
+
+dom.initializeSyncBtn.addEventListener('click', initializeSyncLaunch);
+
+/* --------------------------------------------------------------------------
+ * SETTINGS — cloud & custom endpoint sync
+ * ------------------------------------------------------------------------ */
+
+async function loadSettingsView() {
+  // Last sync timestamp.
+  const { extensionsync_last_sync_at: lastSyncAt = null } =
+    await chrome.storage.local.get('extensionsync_last_sync_at');
+  dom.lastSyncTime.textContent = formatTime(lastSyncAt);
+
+  // Custom endpoint URL.
+  const res = await sendToBackground({ type: 'GET_CUSTOM_ENDPOINT' });
+  if (res?.ok) {
+    dom.endpointInput.value = res.endpoint || '';
+  }
+}
+
+/** "Force Sync" → re-scan and serialize installed extensions. */
+dom.forceSyncBtn.addEventListener('click', async () => {
+  dom.forceSyncBtn.disabled = true;
+  setSyncStatus('pending');
+  try {
+    const res = await sendToBackground({ type: 'REFRESH_PAYLOAD' });
+    setSyncStatus('synced');
+    dom.lastSyncTime.textContent = formatTime(Date.now());
+    if (res?.ok) {
+      const { extensionsync_last_sync_at: ts } =
+        await chrome.storage.local.get('extensionsync_last_sync_at');
+      dom.lastSyncTime.textContent = formatTime(ts);
+    } else {
+      setSyncStatus('error');
+    }
+  } finally {
+    dom.forceSyncBtn.disabled = false;
+  }
+});
+
+/** Save the custom endpoint URL (validated to be HTTPS). */
+async function saveEndpoint() {
+  const url = dom.endpointInput.value.trim();
+
+  if (url && !/^https:\/\//i.test(url)) {
+    dom.endpointStatus.textContent = 'Endpoint must be an HTTPS URL.';
+    dom.endpointStatus.className = 'endpoint-status is-error';
+    return;
+  }
+
+  const res = await sendToBackground({ type: 'SET_CUSTOM_ENDPOINT', url });
+  if (res?.ok) {
+    dom.endpointStatus.textContent = url
+      ? 'Endpoint saved. Payloads will be POSTed on refresh.'
+      : 'Endpoint cleared. Custom sync disabled.';
+    dom.endpointStatus.className = 'endpoint-status is-success';
+  } else {
+    dom.endpointStatus.textContent = 'Failed to save endpoint.';
+    dom.endpointStatus.className = 'endpoint-status is-error';
+  }
+}
+
+dom.saveEndpointBtn.addEventListener('click', saveEndpoint);
+dom.endpointInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') saveEndpoint();
+});
+
+/* --------------------------------------------------------------------------
+ * INITIALISATION
+ * ------------------------------------------------------------------------ */
+document.addEventListener('DOMContentLoaded', () => {
+  activateTab('export');      // default tab
+  loadExtensions();           // render export grid
+});

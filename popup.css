@@ -1,0 +1,911 @@
+/* ============================================================================
+   ExtensionSync — Premium Neon Cyber-Dark Design System
+   ============================================================================ */
+
+/* --------------------------------------------------------------------------
+   DESIGN TOKENS
+   -------------------------------------------------------------------------- */
+:root {
+  /* Surfaces */
+  --bg-canvas:   #0A0A0C;   /* obsidian dark — main background */
+  --bg-surface:  #121214;   /* cards, panels, containers */
+  --bg-elevated: #1A1A1E;   /* hover states, raised elements */
+  --bg-inset:    #0E0E11;   /* inputs, nested regions */
+
+  /* Neon accent palette */
+  --neon-cyan:     #00E5FF;   /* active / success / primary */
+  --neon-cyan-dim: rgba(0, 229, 255, 0.14);
+  --neon-violet:     #9D4EDD;   /* secondary accent */
+  --neon-violet-dim: rgba(157, 78, 221, 0.16);
+
+  /* Borders (razor-thin neon contours) */
+  --border-default: #2A2A30;
+  --border-elevated:#3A3A42;
+  --border-cyan:    rgba(0, 229, 255, 0.55);
+  --border-violet:  rgba(157, 78, 221, 0.5);
+
+  /* Text */
+  --text-primary:  #E8E9EE;
+  --text-secondary:#B4B6C0;
+  --text-muted:    #8A8A92;
+  --text-faint:    #5C5C64;
+
+  /* Status */
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --danger:  #EF4444;
+
+  /* Radii */
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --transition-fast: 0.2s ease-in-out;
+
+  color-scheme: dark;
+}
+
+/* --------------------------------------------------------------------------
+   RESET & BASE
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 400px;
+  max-height: 600px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+code {
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.92em;
+  color: var(--neon-cyan);
+  background: var(--bg-inset);
+  padding: 0.1em 0.4em;
+  border-radius: var(--radius-sm);
+}
+
+/* --------------------------------------------------------------------------
+   HEADER & BRAND
+   -------------------------------------------------------------------------- */
+.app-header {
+  flex-shrink: 0;
+  padding: var(--space-4) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--border-default);
+  background: linear-gradient(180deg, rgba(0, 229, 255, 0.035), transparent 60%);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: var(--neon-cyan);
+  filter: drop-shadow(0 0 6px var(--neon-cyan-dim));
+}
+
+.brand-mark svg {
+  width: 24px;
+  height: 24px;
+}
+
+.brand-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  background: linear-gradient(120deg, var(--neon-cyan), var(--neon-violet));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* --- Sync status indicator --- */
+.sync-indicator {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+}
+
+.sync-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  box-shadow: none;
+  transition: var(--transition-fast);
+}
+
+.sync-indicator[data-state="synced"] .sync-dot {
+  background: var(--neon-cyan);
+  box-shadow: 0 0 8px 1px var(--neon-cyan);
+}
+
+.sync-indicator[data-state="pending"] .sync-dot {
+  background: var(--warning);
+  box-shadow: 0 0 8px 1px rgba(245, 158, 11, 0.5);
+  animation: pulse 1s var(--ease) infinite;
+}
+
+.sync-indicator[data-state="error"] .sync-dot {
+  background: var(--danger);
+  box-shadow: 0 0 8px 1px rgba(239, 68, 68, 0.5);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+/* --- Tab bar --- */
+.tab-bar {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.tab-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  position: relative;
+  transition: color var(--transition-fast);
+}
+
+.tab-btn::after {
+  content: '';
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: 0;
+  height: 2px;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 8px var(--neon-cyan);
+  border-radius: 2px;
+  opacity: 0;
+  transform: scaleX(0.4);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-btn.is-active {
+  color: var(--text-primary);
+}
+
+.tab-btn.is-active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.tab-btn:focus-visible {
+  outline: 1px solid var(--border-cyan);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* --------------------------------------------------------------------------
+   MAIN PANEL LAYOUT
+   -------------------------------------------------------------------------- */
+.app-main {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-4);
+  min-height: 0;
+}
+
+.panel[hidden] {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   PANEL TOOLBAR (Export)
+   -------------------------------------------------------------------------- */
+.panel-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* --- Neon input fields --- */
+.neon-input {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  padding: var(--space-2) var(--space-3);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.neon-input::placeholder {
+  color: var(--text-faint);
+}
+
+.neon-input:hover {
+  border-color: var(--border-elevated);
+}
+
+.neon-input:focus {
+  border-color: var(--border-cyan);
+  box-shadow: 0 0 0 1px var(--neon-cyan-dim), 0 0 14px var(--neon-cyan-dim);
+  outline: none;
+}
+
+/* Variant: sleek neon underline (settings endpoint input) */
+.neon-input.neon-underline {
+  border: none;
+  border-bottom: 1px solid var(--border-cyan);
+  border-radius: 0;
+  background: transparent;
+  padding-left: var(--space-1);
+  padding-right: var(--space-1);
+}
+
+.neon-input.neon-underline:focus {
+  box-shadow: 0 2px 12px -6px var(--neon-cyan);
+}
+
+/* --- Buttons --- */
+.btn-neon {
+  appearance: none;
+  border: 1px solid var(--border-cyan);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(0, 229, 255, 0.10), rgba(0, 229, 255, 0.02));
+  color: var(--neon-cyan);
+  font: inherit;
+  font-weight: 700;
+  font-size: 12px;
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: box-shadow var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.btn-neon:hover {
+  background: rgba(0, 229, 255, 0.16);
+  box-shadow: 0 0 16px -2px var(--neon-cyan);
+}
+
+.btn-neon:active {
+  transform: translateY(1px);
+}
+
+.btn-neon:focus-visible {
+  outline: 1px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+/* Large variant for import launch */
+.btn-neon.btn-lg {
+  flex: 1;
+  padding: var(--space-3) var(--space-4);
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+.btn-neon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-outline {
+  appearance: none;
+  border: 1px solid var(--border-violet);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--neon-violet);
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: box-shadow var(--transition-fast), background var(--transition-fast);
+}
+
+.btn-outline:hover {
+  background: var(--neon-violet-dim);
+  box-shadow: 0 0 12px -2px var(--neon-violet-dim);
+}
+
+.btn-ghost {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.btn-ghost:hover {
+  color: var(--text-primary);
+}
+
+.link-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--neon-violet);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  transition: text-shadow var(--transition-fast);
+}
+
+.link-btn:hover {
+  text-shadow: 0 0 8px var(--neon-violet-dim);
+}
+
+/* --- List meta row --- */
+.list-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.count-badge {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+}
+
+/* --------------------------------------------------------------------------
+   EXTENSION GRID — scrollable card list
+   -------------------------------------------------------------------------- */
+.extension-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 360px;
+  overflow-y: auto;
+  padding: var(--space-1);
+  margin: 0 calc(var(--space-1) * -1);
+}
+
+/* Extension card */
+.ext-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+/* Micro-border glow intensification on hover */
+.ext-card:hover {
+  border-color: var(--border-cyan);
+  box-shadow: 0 0 12px -2px var(--neon-cyan-dim), inset 0 0 20px rgba(0, 229, 255, 0.02);
+  transform: translateY(-1px);
+}
+
+.ext-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+  background: var(--bg-elevated);
+  color: var(--neon-violet);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  border: 1px solid var(--border-default);
+  overflow: hidden;
+}
+
+.ext-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ext-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ext-name {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ext-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+/* Status pill */
+.ext-status {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+
+.ext-status.is-enabled {
+  color: var(--neon-cyan);
+  background: var(--neon-cyan-dim);
+}
+
+.ext-status.is-disabled {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+}
+
+/* Enable/disable toggle */
+.toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 30px;
+  height: 17px;
+}
+
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-elevated);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.toggle input:checked + .toggle-track {
+  background: var(--neon-cyan-dim);
+  border-color: var(--border-cyan);
+  box-shadow: 0 0 10px -2px var(--neon-cyan);
+}
+
+.toggle input:checked + .toggle-track .toggle-thumb {
+  transform: translateX(13px);
+  background: var(--neon-cyan);
+}
+
+.toggle input:focus-visible + .toggle-track {
+  outline: 1px solid var(--neon-cyan);
+  outline-offset: 1px;
+}
+
+.toggle input:disabled + .toggle-track {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* --- Empty state --- */
+.empty-state {
+  text-align: center;
+  padding: var(--space-5) var(--space-4);
+  color: var(--text-muted);
+}
+
+.empty-state .empty-icon {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto var(--space-3);
+  color: var(--text-faint);
+}
+
+.empty-state p {
+  margin: 0 0 var(--space-1);
+}
+
+.empty-state .empty-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* --- Callout (notifications) --- */
+.callout {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  border: 1px solid;
+}
+
+.callout.is-hidden {
+  display: none;
+}
+
+.callout.is-success {
+  border-color: var(--border-cyan);
+  background: var(--neon-cyan-dim);
+  color: var(--neon-cyan);
+  box-shadow: 0 0 14px -4px var(--neon-cyan);
+}
+
+.callout.is-error {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+  color: #FCA5A5;
+}
+
+/* --------------------------------------------------------------------------
+   IMPORT PANEL
+   -------------------------------------------------------------------------- */
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--border-elevated);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.dropzone:hover,
+.dropzone.is-dragover {
+  border-color: var(--border-cyan);
+  box-shadow: 0 0 16px -4px var(--neon-cyan-dim);
+}
+
+.dropzone-icon {
+  width: 30px;
+  height: 30px;
+  color: var(--neon-violet);
+}
+
+.dropzone-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.dropzone-cta {
+  color: var(--neon-cyan);
+  font-weight: 700;
+}
+
+.dropzone-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* --- Import dashboard --- */
+.import-dashboard.is-hidden {
+  display: none;
+}
+
+.import-header {
+  margin-bottom: var(--space-3);
+}
+
+.panel-title {
+  margin: 0 0 var(--space-1);
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.panel-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.import-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: var(--space-4);
+  padding: var(--space-1);
+  margin-left: calc(var(--space-1) * -1);
+  margin-right: calc(var(--space-1) * -1);
+}
+
+/* Reuse ext-card with a checkbox accent */
+.import-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.import-item:hover {
+  border-color: var(--border-violet);
+  box-shadow: 0 0 12px -2px var(--neon-violet-dim);
+}
+
+.import-item.is-selected {
+  border-color: var(--border-cyan);
+  box-shadow: 0 0 12px -2px var(--neon-cyan-dim);
+}
+
+.checkbox {
+  position: relative;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.checkbox-box {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--border-elevated);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.checkbox input:checked + .checkbox-box {
+  background: var(--neon-cyan-dim);
+  border-color: var(--border-cyan);
+  box-shadow: 0 0 10px -2px var(--neon-cyan);
+}
+
+.checkbox input:checked + .checkbox-box::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--neon-cyan);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.import-item .ext-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.already-installed {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.import-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* --- Launch progress --- */
+.launch-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.launch-progress.is-hidden {
+  display: none;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-elevated);
+  border-top-color: var(--neon-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --------------------------------------------------------------------------
+   SETTINGS PANEL
+   -------------------------------------------------------------------------- */
+.settings-group {
+  margin-bottom: var(--space-5);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+}
+
+.setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.setting-value {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.endpoint-form {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.endpoint-status {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  min-height: 14px;
+}
+
+.endpoint-status.is-success {
+  color: var(--neon-cyan);
+}
+
+.endpoint-status.is-error {
+  color: var(--danger);
+}
+
+.settings-footnote {
+  font-size: 11px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border-default);
+  padding-top: var(--space-3);
+}
+
+/* --------------------------------------------------------------------------
+   SCROLLBAR (webkit — Chromium)
+   -------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-elevated);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-violet);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* --------------------------------------------------------------------------
+   FOCUS VISIBILITY UTILITY
+   -------------------------------------------------------------------------- */
+:focus-visible {
+  outline: 1px solid var(--border-cyan);
+  outline-offset: 2px;
+}

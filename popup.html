@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ExtensionSync</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+  <!-- ============ HEADER / BRAND ============ -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2 L20 6 V12 C20 16.5 16.5 20.5 12 22 C7.5 20.5 4 16.5 4 12 V6 Z" />
+          <path d="M9 12 L11 14 L15 10" />
+        </svg>
+      </span>
+      <h1 class="brand-title">ExtensionSync</h1>
+      <span id="sync-status" class="sync-indicator" data-state="idle" title="Sync status" role="status" aria-live="polite">
+        <span class="sync-dot"></span>
+      </span>
+    </div>
+    <nav class="tab-bar" role="tablist" aria-label="Sections">
+      <button class="tab-btn is-active" role="tab" aria-selected="true" data-tab="export">
+        Export
+      </button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="import">
+        Import
+      </button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="settings">
+        Sync
+      </button>
+    </nav>
+  </header>
+
+  <!-- ============ MAIN CONTENT ============ -->
+  <main class="app-main">
+
+    <!-- ======= EXPORT PANEL ======= -->
+    <section id="panel-export" class="panel is-active" role="tabpanel" aria-label="Export extensions">
+      <div class="panel-toolbar">
+        <input
+          type="search"
+          id="search-input"
+          class="neon-input"
+          placeholder="Filter extensions…"
+          autocomplete="off"
+          aria-label="Filter extensions"
+        >
+        <button id="export-all-btn" class="btn-neon" type="button">Export All</button>
+      </div>
+
+      <div class="list-meta" id="list-meta" aria-live="polite">
+        <span id="extension-count" class="count-badge">0 extensions</span>
+        <button id="select-all-btn" class="link-btn" type="button">Select all</button>
+      </div>
+
+      <div id="extension-grid" class="extension-grid" aria-live="polite"></div>
+
+      <div id="export-callout" class="callout is-hidden" role="status" aria-live="polite"></div>
+    </section>
+
+    <!-- ======= IMPORT PANEL ======= -->
+    <section id="panel-import" class="panel" role="tabpanel" aria-label="Import extensions" hidden>
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Select backup file">
+        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        <p class="dropzone-text">Drop backup file or <span class="dropzone-cta">browse</span></p>
+        <p class="dropzone-hint">Accepts <code>extensionsync-backup.json</code></p>
+        <input type="file" id="import-file" accept=".json,application/json" class="sr-only" aria-hidden="true">
+      </div>
+
+      <div id="import-dashboard" class="import-dashboard is-hidden">
+        <div class="import-header">
+          <h2 class="panel-title">Select extensions to install</h2>
+          <p class="panel-subtitle" id="import-summary"></p>
+        </div>
+
+        <div id="import-list" class="import-list"></div>
+
+        <div class="import-actions">
+          <button id="initialize-sync-btn" class="btn-neon btn-lg" type="button">
+            Initialize Sync Launch
+          </button>
+          <button id="clear-import-btn" class="btn-ghost" type="button">Clear</button>
+        </div>
+
+        <div id="launch-progress" class="launch-progress is-hidden" role="status" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="launch-progress-text">Opening tabs…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======= SETTINGS / CLOUD SYNC PANEL ======= -->
+    <section id="panel-settings" class="panel" role="tabpanel" aria-label="Synchronization settings" hidden>
+      <div class="settings-group">
+        <h2 class="panel-title">Cloud Profile Sync</h2>
+        <p class="panel-subtitle">Serialized payloads are saved to <code>chrome.storage.sync</code> and automatically propagate to every browser signed into your account.</p>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="last-sync-time" class="setting-label">Last sync</label>
+            <span id="last-sync-time" class="setting-value">Never</span>
+          </div>
+          <button id="force-sync-btn" class="btn-outline" type="button">Force Sync</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h2 class="panel-title">Custom Endpoint Sync</h2>
+        <p class="panel-subtitle">Hook up an external database webhook or custom REST API. Payloads are POSTed as JSON on every refresh.</p>
+
+        <div class="endpoint-form">
+          <label for="endpoint-input" class="sr-only">Custom endpoint URL</label>
+          <input
+            type="url"
+            id="endpoint-input"
+            class="neon-input neon-underline"
+            placeholder="https://api.example.com/webhook"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="save-endpoint-btn" class="btn-outline" type="button">Save</button>
+        </div>
+        <p id="endpoint-status" class="endpoint-status" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="settings-footnote">
+        Note: <code>chrome.storage.sync</code> is capped at ~100&nbsp;KB; for very large extension sets the compact JSON is truncated to fit.
+      </div>
+    </section>
+
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
